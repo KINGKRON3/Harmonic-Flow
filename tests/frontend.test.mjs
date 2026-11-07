@@ -10,12 +10,15 @@ import vm from "node:vm";
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
+// elements that carry the `hidden` attribute in the real markup
+const HIDDEN_IDS = new Set([...html.matchAll(/<[^>]*id="([^"]+)"[^>]*\shidden[^>]*>/g)].map(m => m[1]));
+
 function makeEnv() {
   const els = new Map();
   const el = id => {
     if (!els.has(id)) {
       els.set(id, {
-        id, hidden: id === "loader", value: "", textContent: "", innerHTML: "", disabled: false,
+        id, hidden: HIDDEN_IDS.has(id), value: "", textContent: "", innerHTML: "", disabled: false,
         style: {}, attrs: {}, listeners: {},
         classList: { add() {}, remove() {} },
         setAttribute(k, v) { this.attrs[k] = v; },
@@ -853,4 +856,195 @@ test("Rekordbox XML: empty phases are dropped and numbering stays contiguous", (
   const none = playlistsOf(hf.buildXML({ name: "x", order }));
   assert.equal(none.lists.length, 1);
   assert.equal(none.rootCount, 1);
+});
+
+// ---- Gig Brief / Event Analyzer agent --------------------------------------------------------
+
+const BAR_ID = "url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA";
+const LATIN_ID = "url:https://soundcloud.com/x/sets/latin";
+
+const gigPlan = (over = {}) => ({
+  source: "llm", note: null,
+  rationale: "Opening slot (22:00-00:00, 2 h): a slow burn. Strict keys; using 'Latin Tech'.",
+  duration_hours: 3, curve: "coaster", peak_position: 80, strictness: 1, tempo_flex: 3, selected_pool_ids: [LATIN_ID],
+  ...over
+});
+
+async function gigEnv() {
+  const env = makeEnv();
+  await fetchList(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", playlistReply("Bar", 7, "B"));
+  await fetchList(env, "https://soundcloud.com/x/sets/latin", playlistReply("Latin Tech", 24, "L"));
+  return env;
+}
+
+async function analyze(env, text, reply) {
+  const calls = [];
+  env.ctx.fetch = async (url, init) => { calls.push([url, JSON.parse(init.body)]); return reply; };
+  env.el("gig-text").value = text;
+  await env.el("btn-gig").listeners.click();
+  return calls;
+}
+const planReply = plan => ({ ok: true, json: async () => plan });
+const checkedIds = hf => Array.from(hf.sources.filter(x => x.checked), x => x.id);
+
+test("markup: the Event & Gig Brief panel sits at the top of the page", () => {
+  assert.match(html, /<b>Event &amp; Gig Brief \(AI Decision Engine\)<\/b>/);
+  assert.ok(html.indexOf('id="brief"') > 0 && html.indexOf('id="brief"') < html.indexOf('<main class="layout">'), "above the controls");
+  assert.match(html, /<textarea id="gig-text"[^>]*placeholder="Opening slot at warehouse party 22-00, dark hypnotic vibes"/);
+  assert.match(html, /<button class="btn primary" id="btn-gig" type="button">Analyze Gig &amp; Plan Set<\/button>/);
+  assert.match(html, /<h2>Gig Strategy Memo<\/h2>/);
+});
+
+test("Analyze Gig posts the brief together with the current Track Pool lists", async () => {
+  const env = await gigEnv();
+  const calls = await analyze(env, "  Opening slot at warehouse party 22-00, dark hypnotic vibes ", planReply(gigPlan()));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "/api/analyze-gig");
+  assert.deepEqual(calls[0][1], {
+    text: "Opening slot at warehouse party 22-00, dark hypnotic vibes",
+    pools: [{ id: "manual", name: "Tech House Peak Hour", count: 12 }, { id: BAR_ID, name: "Bar", count: 7 }, { id: LATIN_ID, name: "Latin Tech", count: 24 }]
+  });
+});
+
+test("the agent's decisions are set in duration, arc, sliders, peak position and pool ticks", async () => {
+  const env = await gigEnv();
+  const { el, hf } = env;
+  const before = hf.current;
+  await analyze(env, "Opening slot, hypnotic", planReply(gigPlan()));
+
+  assert.equal(el("set-len").value, "10800");
+  assert.equal(el("arc").value, "coaster");
+  assert.equal(el("peak-pos").value, "80");
+  assert.equal(el("peak-pos-val").textContent, "80%");
+  assert.equal(el("strictness").value, "1");
+  assert.equal(el("strictness-val").textContent, "1 / 3");
+  assert.equal(el("tempo-flex").value, "3");
+  assert.equal(el("tempo-flex-val").textContent, "±3 BPM");
+  assert.match(el("arc-hint").textContent, /breather/);
+  assert.deepEqual(checkedIds(hf), [LATIN_ID], "only the agent's list is ticked");
+  assert.match(el("pool").innerHTML, /data-id="url:https:\/\/soundcloud\.com\/x\/sets\/latin" checked>/);
+  assert.ok(!/data-id="manual" checked/.test(el("pool").innerHTML) && !/data-id="url:https:\/\/open\.spotify[^"]*" checked/.test(el("pool").innerHTML));
+  assert.equal(el("pool-total").textContent, "24 tracks selected");
+
+  assert.equal(el("gig-memo").hidden, false);
+  assert.equal(el("gig-rationale").textContent, gigPlan().rationale);
+  const chips = el("gig-chips").innerHTML;
+  for (const part of ["3 h", "Rollercoaster / Two Peaks", "80%", "1 / 3", "±3 BPM", "Latin Tech"]) assert.ok(chips.includes(part), `chip ${part}`);
+  assert.equal(el("gig-source").textContent, "Claude");
+  assert.equal(hf.current, before, "nothing is generated until the DJ presses Generate");
+  assert.equal(el("loader").hidden, true);
+  assert.equal(el("btn-gig").disabled, false);
+  assert.equal(el("btn-gig").textContent, "Analyze Gig & Plan Set");
+});
+
+test("after the plan the DJ can still tick lists by hand, then Generate uses the planned settings", async () => {
+  const env = await gigEnv();
+  const { el, hf, flush } = env;
+  await analyze(env, "Opening slot", planReply(gigPlan()));
+  const generate = () => { el("form").listeners.submit({ preventDefault() {} }); flush(); };
+
+  generate();
+  assert.equal(hf.current.targetSec, 10800);
+  assert.equal(hf.current.arc, "coaster");
+  assert.equal(hf.current.peakPos, .8);
+  assert.deepEqual({ ...hf.current.opts }, { strictness: 1, tempoFlex: 3 });
+  assert.equal(hf.current.order.length, 24);
+  assert.ok(hf.current.order.every(t => t.title.startsWith("LTitle")), "only the Latin list");
+
+  el("pool").listeners.change({ target: { dataset: { id: BAR_ID }, checked: true } });
+  flush();
+  assert.deepEqual(checkedIds(hf), [BAR_ID, LATIN_ID], "manual tick is respected");
+  assert.equal(hf.current.order.length, 31);
+  assert.ok(hf.current.order.some(t => t.title.startsWith("BTitle")) && hf.current.order.some(t => t.title.startsWith("LTitle")));
+  assert.equal(hf.current.arc, "coaster");
+});
+
+test("a plan can be re-applied: ticks of the previous plan are cleared", async () => {
+  const env = await gigEnv();
+  await analyze(env, "first", planReply(gigPlan({ selected_pool_ids: [LATIN_ID, "manual"] })));
+  assert.deepEqual(checkedIds(env.hf), ["manual", LATIN_ID]);
+  await analyze(env, "second", planReply(gigPlan({ selected_pool_ids: [BAR_ID], source: "local", note: "Local fallback used.", curve: "slow", duration_hours: 1, peak_position: 90 })));
+  assert.deepEqual(checkedIds(env.hf), [BAR_ID]);
+  assert.equal(env.el("arc").value, "slow");
+  assert.equal(env.el("set-len").value, "3600");
+  assert.equal(env.el("gig-source").textContent, "Local engine");
+  assert.equal(env.el("gig-note").textContent, "Local fallback used.");
+  assert.equal(env.el("gig-note").hidden, false);
+});
+
+test("plan values are clamped / snapped and bad ones are ignored instead of breaking the UI", async () => {
+  const env = await gigEnv();
+  const { el, hf } = env;
+  await analyze(env, "x brief", planReply(gigPlan({ duration_hours: 9, peak_position: 62, strictness: 0, tempo_flex: 99, curve: "slow" })));
+  assert.deepEqual([el("set-len").value, el("peak-pos").value, el("strictness").value, el("tempo-flex").value, el("arc").value], ["14400", "60", "1", "10", "slow"]);
+  await analyze(env, "x brief", planReply(gigPlan({ duration_hours: 2, peak_position: 200, strictness: 7, tempo_flex: 0 })));
+  assert.deepEqual([el("peak-pos").value, el("strictness").value, el("tempo-flex").value], ["90", "3", "1"]);
+
+  // garbage: unknown curve, non-numbers, unknown pool ids -> previous values / ticks stay
+  const keep = [el("set-len").value, el("arc").value, el("strictness").value, el("tempo-flex").value];
+  const ticks = checkedIds(hf);
+  await analyze(env, "x brief", planReply({ rationale: 42, duration_hours: "banana", curve: "nope", strictness: null, tempo_flex: "", selected_pool_ids: ["ghost", 5, null] }));
+  assert.deepEqual([el("set-len").value, el("arc").value, el("strictness").value, el("tempo-flex").value], keep);
+  assert.deepEqual(checkedIds(hf), ticks, "unknown pool ids change nothing");
+  assert.equal(el("btn-gig").disabled, false);
+  assert.equal(el("gig-error").hidden, true);
+});
+
+test("memo shows model text as plain text only", async () => {
+  const env = await gigEnv();
+  env.hf.sources[2].name = "<b>x</b> & <img src=1 onerror=alert(1)>";
+  env.hf.renderPool();
+  await analyze(env, "x brief", planReply(gigPlan({ rationale: "<img src=x onerror=alert(1)> <script>1</script>" })));
+  assert.equal(env.el("gig-rationale").textContent, "<img src=x onerror=alert(1)> <script>1</script>", "textContent, never innerHTML");
+  const chips = env.el("gig-chips").innerHTML;
+  assert.ok(!/<img|<script/i.test(chips));
+  assert.match(chips, /&lt;b&gt;x&lt;\/b&gt; &amp; &lt;img src=1 onerror=alert\(1\)&gt;/);
+  assert.ok(!/<img|<script/i.test(env.el("pool").innerHTML));
+});
+
+test("Analyze Gig: empty brief, server error and offline backend are reported without side effects", async () => {
+  const env = makeEnv();
+  const { el, hf } = env;
+  let calls = 0;
+  env.ctx.fetch = async () => { calls++; return planReply(gigPlan()); };
+  el("gig-text").value = "  ";
+  await el("btn-gig").listeners.click();
+  assert.equal(calls, 0);
+  assert.equal(el("gig-error").hidden, false);
+
+  const ticks = checkedIds(hf), len = el("set-len").value;
+  env.ctx.fetch = async () => ({ ok: false, json: async () => ({ detail: "Liitä tapahtumakuvaus tai soittoaika ensin." }) });
+  el("gig-text").value = "party ???";
+  await el("btn-gig").listeners.click();
+  assert.equal(el("gig-error").textContent, "Liitä tapahtumakuvaus tai soittoaika ensin.");
+
+  env.ctx.fetch = async () => { throw new TypeError("Failed to fetch"); };
+  await el("btn-gig").listeners.click();
+  assert.match(el("gig-error").textContent, /Backend offline/);
+  assert.equal(el("btn-gig").disabled, false);
+  assert.equal(el("gig-memo").hidden, true);
+  assert.deepEqual(checkedIds(hf), ticks);
+  assert.equal(el("set-len").value, len);
+});
+
+// Contract test: pytest feeds the real backend engine's answer for a brief into the real page code.
+test("a plan from the real backend engine lands in the UI", { skip: !process.env.HF_GIG_PLAN }, async () => {
+  const { text, pools, plan } = JSON.parse(readFileSync(process.env.HF_GIG_PLAN, "utf8"));
+  const env = makeEnv();
+  for (const p of pools) if (p.id !== "manual") env.hf.addSource({ id: p.id, name: p.name, text: lines(p.count, p.id.slice(-3)), checked: true });
+  const calls = await analyze(env, text, planReply(plan));
+  assert.deepEqual(calls[0][1].pools.map(p => p.id), pools.map(p => p.id));
+  const { el, hf } = env;
+  assert.equal(el("set-len").value, String(plan.duration_hours * 3600));
+  assert.equal(el("arc").value, plan.curve);
+  assert.equal(+el("peak-pos").value, plan.peak_position);
+  assert.equal(el("strictness").value, String(plan.strictness));
+  assert.equal(el("tempo-flex").value, String(plan.tempo_flex));
+  assert.deepEqual(checkedIds(hf).sort(), [...plan.selected_pool_ids].sort());
+  assert.equal(el("gig-rationale").textContent, plan.rationale);
+  assert.equal(el("gig-memo").hidden, false);
+  el("form").listeners.submit({ preventDefault() {} });
+  env.flush();
+  assert.equal(hf.current.arc, plan.curve);
+  assert.equal(hf.current.targetSec, plan.duration_hours * 3600);
 });

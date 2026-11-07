@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -478,3 +479,190 @@ def test_rekordbox_hot_cues_stay_on_bars_and_inside_each_track(arc, arc_exports)
         for s in starts:
             bars = s * bpm / 240
             assert abs(bars - round(bars)) < 0.02, f"{s}s is not on a bar line at {bpm} BPM"
+
+
+# ---------------------------------------------------------------------------
+# Gig Brief / Event Analyzer (/api/analyze-gig)
+# ---------------------------------------------------------------------------
+
+GIG_POOLS = [
+    {"id": "manual", "name": "Custom list", "count": 12},
+    {"id": "url:a", "name": "Dark Techno", "count": 30},
+    {"id": "url:b", "name": "Latin Tech", "count": 24},
+    {"id": "url:c", "name": "Bar", "count": 7},
+]
+ALL_IDS = [p["id"] for p in GIG_POOLS]
+OPENING_BRIEF = "Opening slot at warehouse party 22-00, dark hypnotic vibes"
+
+
+def gig(text, pools=None):
+    pools = GIG_POOLS if pools is None else pools
+    try:
+        return 200, app_module.analyze_gig(app_module.GigRequest(text=text, pools=pools))
+    except HTTPException as e:
+        return e.status_code, {"detail": e.detail}
+
+
+def assert_valid_plan(plan, pools=None):
+    ids = [p["id"] for p in (GIG_POOLS if pools is None else pools)]
+    assert plan["source"] in ("llm", "local")
+    assert plan["duration_hours"] in (1, 2, 3, 4) and isinstance(plan["duration_hours"], int)
+    assert plan["curve"] in ("classic", "slow", "banger", "coaster")
+    assert isinstance(plan["peak_position"], int) and 50 <= plan["peak_position"] <= 90
+    assert plan["strictness"] in (1, 2, 3)
+    assert isinstance(plan["tempo_flex"], int) and 1 <= plan["tempo_flex"] <= 10
+    assert set(plan["selected_pool_ids"]) <= set(ids) and len(set(plan["selected_pool_ids"])) == len(plan["selected_pool_ids"])
+    if ids:
+        assert plan["selected_pool_ids"], "at least one list is always selected"
+    r = plan["rationale"]
+    assert 20 < len(r) <= 400 and "\n" not in r
+    assert len(re.findall(r"[.!?](?:\s|$)", r)) <= 2, "1-2 sentences"
+
+
+@pytest.mark.parametrize("text,hours,curve,peak,strictness,max_flex,pools", [
+    (OPENING_BRIEF, 2, "slow", 90, 1, 4, ["url:a"]),
+    ("Headline set at festival main stage 23:00-01:00, hard techno bangers", 2, "banger", 60, 2, 8, ["url:a"]),
+    ("Closing set 4am-8am sunrise after-hours", 4, "classic", 60, 2, 8, ALL_IDS),
+    ("Marathon all night, 6 hour b2b journey", 4, "coaster", 75, 2, 8, ALL_IDS),
+    ("10pm-11pm latin party", 1, "classic", 75, 2, 8, ["url:b"]),
+    ("Avauskeikka 21-23, lämmittely", 2, "slow", 90, 2, 8, ALL_IDS),
+    ("Open format wedding party, 3 hours, anything goes", 3, "classic", 75, 3, 10, ALL_IDS),
+    ("gibberish xyz", 2, "classic", 75, 2, 8, ALL_IDS),
+])
+def test_local_gig_engine_decisions(text, hours, curve, peak, strictness, max_flex, pools):
+    status, plan = gig(text)
+    assert status == 200 and plan["source"] == "local" and plan["note"] is None
+    assert_valid_plan(plan)
+    assert (plan["duration_hours"], plan["curve"], plan["peak_position"], plan["strictness"]) == (hours, curve, peak, strictness)
+    assert plan["tempo_flex"] <= max_flex
+    assert plan["selected_pool_ids"] == pools
+    assert f"{hours} h" in plan["rationale"]
+
+
+def test_gig_engine_is_deterministic_and_reads_time_ranges():
+    assert gig(OPENING_BRIEF) == gig(OPENING_BRIEF)
+    for text, hours in [("22-00", 2), ("22:00-01:00", 3), ("10pm to 2am", 4), ("9 pm - 10 pm", 1), ("20:00 till 21:30", 2), ("11am-1pm", 2)]:
+        assert gig("DJ slot " + text)[1]["duration_hours"] == hours, text
+    # numbers that are not a time slot must not be read as one
+    for text in ["techno 130-140 BPM", "tickets 5-10 euro", "on 12.11.2026", "entry 20-30%"]:
+        assert gig(text)[1]["duration_hours"] == 2, text
+
+
+def test_gig_engine_pool_matching_and_edge_cases():
+    pools = [{"id": "w", "name": "Warehouse Bangers", "count": 5}, {"id": "d", "name": "DnB Run", "count": 5}, {"id": "w", "name": "dup", "count": 1}]
+    plan = gig("warehouse rave tonight", pools)[1]
+    assert plan["selected_pool_ids"] == ["w"]
+    assert_valid_plan(plan, pools)
+    plan = gig("drum and bass night", pools)[1]
+    assert plan["selected_pool_ids"] == ["d"]
+    empty = gig("Opening slot 22-00", [])[1]
+    assert empty["selected_pool_ids"] == []
+    assert_valid_plan(empty, [])
+    # a pool name that only repeats generic words matches nothing, so everything stays selected
+    assert gig("opening set", [{"id": "x", "name": "My playlist", "count": 3}])[1]["selected_pool_ids"] == ["x"]
+
+
+def test_gig_input_validation():
+    with pytest.raises(ValidationError):
+        app_module.GigRequest(text="x" * 2001)
+    with pytest.raises(ValidationError):
+        app_module.GigRequest(text="ok", pools=[{"id": str(i), "name": "n"} for i in range(31)])
+    with pytest.raises(ValidationError):
+        app_module.GigRequest(text="ok", pools=[{"id": "a", "name": "x" * 121}])
+    status, body = gig("  ?  ")
+    assert status == 400 and "tapahtumakuvaus" in body["detail"]
+
+
+def test_gig_hostile_pool_names_cannot_inject_text():
+    pools = [{"id": "p1", "name": 'Evil"\n<script>alert(1)</script>| techno', "count": 1}]
+    plan = gig("dark techno warehouse", pools)[1]
+    assert plan["selected_pool_ids"] == ["p1"]
+    assert "\n" not in plan["rationale"] and "|" not in plan["rationale"]
+
+
+LLM_PLAN = {"rationale": "Warm opening slot, so a slow climb with tight key matching.", "duration_hours": 2, "curve": "slow",
+            "peak_position": 85, "strictness": 1, "tempo_flex": 3, "selected_pool_ids": ["url:a"]}
+
+
+def gig_llm(monkeypatch, reply, capture=None):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-gig-secret")
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        if capture is not None:
+            capture.update(url=url, headers=headers, body=json)
+        if isinstance(reply, Exception):
+            raise reply
+        text = reply if isinstance(reply, str) else globals()["json"].dumps(reply)
+        return FakeResponse(payload={"content": [{"type": "text", "text": text}]})
+
+    monkeypatch.setattr(app_module.requests, "post", fake_post)
+
+
+def test_gig_llm_path(monkeypatch):
+    sent = {}
+    gig_llm(monkeypatch, "Sure!\n" + json.dumps(LLM_PLAN) + "\nHope this helps", capture=sent)
+    status, plan = gig(OPENING_BRIEF)
+    assert status == 200 and plan["source"] == "llm" and plan["note"] is None
+    assert_valid_plan(plan)
+    assert (plan["curve"], plan["peak_position"], plan["selected_pool_ids"]) == ("slow", 85, ["url:a"])
+    assert sent["url"] == "https://api.anthropic.com/v1/messages" and sent["headers"]["x-api-key"] == "sk-gig-secret"
+    msgs = sent["body"]["messages"]
+    assert len(msgs) == 1 and msgs[0]["role"] == "user"
+    assert json.loads(msgs[0]["content"]) == {
+        "event": OPENING_BRIEF, "pools": [{"id": p["id"], "name": p["name"], "tracks": p["count"]} for p in GIG_POOLS]}
+    assert OPENING_BRIEF not in sent["body"]["system"], "event text only travels as user data"
+    assert "sk-gig-secret" not in json.dumps(plan)
+
+
+def test_gig_llm_output_is_clamped_and_pool_names_are_mapped_to_ids(monkeypatch):
+    gig_llm(monkeypatch, {**LLM_PLAN, "duration_hours": 9, "peak_position": 12, "strictness": 8, "tempo_flex": 0.4,
+                          "curve": "Banger", "selected_pool_ids": ["latin tech", "url:a", "url:a", "ghost", 7, None]})
+    status, plan = gig("some brief")
+    assert plan["source"] == "llm"
+    assert (plan["duration_hours"], plan["peak_position"], plan["strictness"], plan["tempo_flex"], plan["curve"]) == (4, 50, 3, 1, "banger")
+    assert plan["selected_pool_ids"] == ["url:b", "url:a"]
+    assert_valid_plan(plan)
+
+
+@pytest.mark.parametrize("bad", [
+    "no json here",
+    {**LLM_PLAN, "curve": "zigzag"},
+    {**LLM_PLAN, "duration_hours": "two"},
+    {**LLM_PLAN, "peak_position": None},
+    {**LLM_PLAN, "strictness": True},
+    {**LLM_PLAN, "selected_pool_ids": ["ghost"]},
+    {**LLM_PLAN, "selected_pool_ids": "url:a"},
+    {**LLM_PLAN, "rationale": "   "},
+    [1, 2, 3],
+])
+def test_bad_gig_llm_output_falls_back_to_the_local_engine(bad, monkeypatch):
+    gig_llm(monkeypatch, bad if not isinstance(bad, list) else json.dumps(bad))
+    status, plan = gig(OPENING_BRIEF)
+    assert status == 200 and plan["source"] == "local" and plan["note"]
+    assert plan["curve"] == "slow" and plan["selected_pool_ids"] == ["url:a"]
+    assert_valid_plan(plan)
+
+
+@pytest.mark.parametrize("failure", [
+    app_module.requests.ConnectionError("offline"), app_module.requests.Timeout("slow"), RuntimeError("HTTP 529"),
+])
+def test_gig_llm_outage_never_breaks_the_demo(failure, monkeypatch):
+    gig_llm(monkeypatch, failure)
+    status, plan = gig(OPENING_BRIEF)
+    assert status == 200 and plan["source"] == "local" and "paikallista päätösmoottoria" in plan["note"]
+    assert_valid_plan(plan)
+
+
+@needs_node
+def test_real_gig_plan_lands_in_the_ui(tmp_path):
+    """The plan produced by the backend engine is fed through the real page code (clicking the button)."""
+    status, plan = gig(OPENING_BRIEF)
+    assert status == 200
+    f = tmp_path / "gig.json"
+    f.write_text(json.dumps({"text": OPENING_BRIEF, "pools": GIG_POOLS, "plan": plan}), encoding="utf-8")
+    res = subprocess.run(["node", "--test", "--test-name-pattern=real backend engine", "tests/frontend.test.mjs"],
+                         cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                         env={**os.environ, "HF_GIG_PLAN": str(f)})
+    out = res.stdout + res.stderr
+    assert res.returncode == 0, out[-3000:]
+    assert "skipped 0" in out and "pass 1" in out, "the contract test must actually run"

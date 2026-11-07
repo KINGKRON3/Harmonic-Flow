@@ -89,6 +89,14 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
 .pool-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
 .pool-x:hover { color: var(--bad); }
 .arc-preview { width: 100%; height: 36px; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; }
+.brief-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 12px; }
+#gig-text { min-height: 58px; font-family: var(--font-ui); font-size: 13px; }
+.memo { margin: 0 12px 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--bg); border-radius: 2px; }
+.memo h2 { margin: 0 0 4px; font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.memo p { margin: 0; }
+.chips { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li { font: 500 11.5px var(--font-mono); padding: 3px 8px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel); }
+.chips li b { color: var(--muted); font-weight: 400; margin-right: 6px; }
 .set-panel { position: relative; min-height: 360px; }
 .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .stat { display: flex; gap: 6px; align-items: baseline; }
@@ -135,6 +143,7 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--accent); padding: 8px 14px; border-radius: 2px; font-size: 12px; z-index: 5; max-width: calc(100vw - 24px); }
 
 @media (max-width: 960px) {
+  .brief-body { grid-template-columns: minmax(0, 1fr); }
   .layout { grid-template-columns: minmax(0, 1fr); }
   .actions p { margin-left: 0; width: 100%; }
 }
@@ -150,6 +159,24 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
     </div>
     <span class="status-badge" id="backend-status">Checking backend...</span>
   </header>
+
+  <section class="panel brief" id="brief" aria-label="Event and gig brief">
+    <div class="panel-head"><b>Event &amp; Gig Brief (AI Decision Engine)</b><span id="gig-source"></span></div>
+    <div class="brief-body">
+      <div class="field">
+        <label for="gig-text">Event description, set time or poster text</label>
+        <textarea id="gig-text" maxlength="2000" spellcheck="false" placeholder="Opening slot at warehouse party 22-00, dark hypnotic vibes"></textarea>
+        <p class="error" id="gig-error" hidden></p>
+      </div>
+      <button class="btn primary" id="btn-gig" type="button">Analyze Gig &amp; Plan Set</button>
+    </div>
+    <div class="memo" id="gig-memo" hidden>
+      <h2>Gig Strategy Memo</h2>
+      <p id="gig-rationale"></p>
+      <ul class="chips" id="gig-chips"></ul>
+      <p class="hint" id="gig-note" hidden></p>
+    </div>
+  </section>
 
   <main class="layout">
     <section class="panel input-panel" aria-label="Track input">
@@ -1058,6 +1085,65 @@ $("btn-ai").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = "AI Curate Set";
+  }
+});
+
+// ---- Gig Brief agent: the decisions land in the normal controls, the DJ can still tweak them before Generate ----
+function applyGigPlan(plan) {
+  const num = (v, lo, hi) => Number.isFinite(+v) && v !== null && v !== "" ? clamp(Math.round(+v), lo, hi) : null;
+  const hours = num(plan.duration_hours, 1, 4);
+  if (hours !== null) $("set-len").value = String(hours * 3600);
+  if (ARCS[plan.curve]) $("arc").value = plan.curve;
+  const peak = num(plan.peak_position, PEAK_MIN, PEAK_MAX);
+  $("peak-pos").value = String(peak !== null ? clamp(Math.round(peak / 5) * 5, PEAK_MIN, PEAK_MAX) : ARCS[readArc().arc].peak);
+  const strict = num(plan.strictness, 1, 3), flex = num(plan.tempo_flex, 1, 10);
+  if (strict !== null) $("strictness").value = String(strict);
+  if (flex !== null) $("tempo-flex").value = String(flex);
+
+  const ids = Array.isArray(plan.selected_pool_ids) ? plan.selected_pool_ids : [];
+  if (sources.some(x => ids.includes(x.id))) sources.forEach(x => { x.checked = ids.includes(x.id); });
+  renderPool();
+  syncSliders();
+
+  const o = readOpts(), a = readArc(), picked = sources.filter(x => x.checked).map(x => x.name);
+  $("gig-rationale").textContent = String(plan.rationale || "");
+  $("gig-chips").innerHTML = [
+    ["Duration", `${durationSeconds() / 3600} h`], ["Curve", ARCS[a.arc].label], ["Peak", `${Math.round(a.peakPos * 100)}%`],
+    ["Strictness", `${o.strictness} / 3`], ["Tempo", `±${o.tempoFlex} BPM`], ["Pools", picked.join(", ") || "none"]
+  ].map(([k, v]) => `<li><b>${k}</b>${esc(v)}</li>`).join("");
+  $("gig-note").textContent = plan.note || "";
+  $("gig-note").hidden = !plan.note;
+  $("gig-source").textContent = plan.source === "llm" ? "Claude" : "Local engine";
+  $("gig-memo").hidden = false;
+}
+
+$("btn-gig").addEventListener("click", async () => {
+  const text = $("gig-text").value.trim(), err = $("gig-error"), btn = $("btn-gig");
+  err.hidden = true;
+  if (text.length < 3) {
+    err.textContent = "Paste the event description, set time or poster text first.";
+    err.hidden = false;
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Analyzing...";
+  try {
+    const pools = sources.slice(0, 30).map(x => ({ id: x.id, name: x.name, count: parseList(sourceText(x)).tracks.length }));
+    const res = await fetch("/api/analyze-gig", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, pools })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not analyze the brief.");
+    applyGigPlan(data);
+    toast("Plan applied. Adjust the pool or sliders if you like, then press Generate.");
+  } catch (e) {
+    err.textContent = e && e.name === "TypeError" ? "Backend offline. Start it with: python app.py" : e.message;
+    err.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Analyze Gig & Plan Set";
   }
 });
 
