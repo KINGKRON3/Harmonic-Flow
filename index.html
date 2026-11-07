@@ -284,6 +284,10 @@ dl { margin: 0; }
 .note.clash { color: var(--bad); background: rgba(255, 107, 134, .09); }
 .note.tempo { color: var(--muted); border-color: var(--line); }
 
+.sliders { display: grid; gap: 14px; }
+.slider-row { display: grid; gap: 4px; }
+.slider-row input[type="range"] { width: 100%; accent-color: var(--cyan); }
+.slider-row output { font: 500 13px var(--font-data); color: var(--cyan); }
 [hidden], .loader[hidden] { display: none !important; }
 .loader {
   position: absolute; inset: 0; z-index: 2;
@@ -357,6 +361,8 @@ dl { margin: 0; }
             <option value="tech">Tech House Peak Hour</option>
             <option value="melodic">Melodic Techno Journey</option>
             <option value="dnb">Drum &amp; Bass Energy Run</option>
+            <option value="latin">Latin Tech (124-128 BPM)</option>
+            <option value="rave">Peak Time Rave (138-144 BPM)</option>
           </select>
         </div>
 
@@ -384,6 +390,25 @@ dl { margin: 0; }
           </select>
           <textarea id="tracks" spellcheck="false" wrap="off" placeholder="Artist - Title | 128 | 8A | E4"></textarea>
           <p class="hint">One track per line. Format: <code>Artist - Title | BPM | Key | E1-E5</code>. Missing data is estimated with ~.</p>
+        </div>
+
+        <div class="field sliders">
+          <div class="slider-row">
+            <div class="field-header">
+              <label for="strictness">Harmonic Strictness</label>
+              <output id="strictness-val" for="strictness"></output>
+            </div>
+            <input type="range" id="strictness" min="1" max="3" step="1" value="2" aria-describedby="strictness-hint">
+            <p class="hint" id="strictness-hint"></p>
+          </div>
+          <div class="slider-row">
+            <div class="field-header">
+              <label for="tempo-flex">Tempo Flexibility</label>
+              <output id="tempo-flex-val" for="tempo-flex"></output>
+            </div>
+            <input type="range" id="tempo-flex" min="1" max="10" step="1" value="6" aria-describedby="tempo-flex-hint">
+            <p class="hint" id="tempo-flex-hint">Largest BPM jump allowed between consecutive tracks.</p>
+          </div>
         </div>
 
         <fieldset class="field">
@@ -481,6 +506,35 @@ Serum - Lumberjack | 174 | 10A | E4
 Camo & Krooked - Sientelo | 174 | 12A | E5` }
 };
 
+// Genre metadata: bpm = expected tempo range, strictness / tempoFlex = slider defaults applied with the preset.
+Object.assign(PRESETS.tech, { bpm: [124, 128], strictness: 2, tempoFlex: 4 });
+Object.assign(PRESETS.melodic, { bpm: [122, 126], strictness: 1, tempoFlex: 3 });
+Object.assign(PRESETS.dnb, { bpm: [172, 176], strictness: 2, tempoFlex: 3 });
+PRESETS.latin = { label: "Latin Tech", bpm: [124, 128], strictness: 2, tempoFlex: 4, tracks: `Hugel - Bella Ciao | 125 | 8A | E4
+Gordo - Cuando Te Vea | 126 | 9A | E4
+Pawsa - Cumbia Negra | 124 | 7A | E3
+Vintage Culture - La Fiesta | 126 | 8A | E4
+Rafa Barrios - Tropical Heat | 125 | 10A | E4
+Cloonee - Latin Lover | 127 | 9A | E5
+Dennis Cruz - Fuego | 128 | 11A | E5
+Mochakk - Tambor | 126 | 8B | E4
+Biscits - Salsa Loca | 124 | 6A | E3
+Santi D'Orazio - Mambo | 127 | 10A | E5
+Hot Since 82 - Havana Nights | 125 | 7A | E3
+Eli Brown - Caliente | 128 | 9A | E5` };
+PRESETS.rave = { label: "Peak Time Rave", bpm: [138, 144], strictness: 2, tempoFlex: 3, tracks: `Charlotte de Witte - Doppler | 140 | 5A | E4
+Amelie Lens - Hypnotized | 138 | 6A | E4
+I Hate Models - Daydream | 141 | 5A | E5
+Sara Landry - Warriors | 142 | 4A | E5
+KI/KI - Night Drive | 140 | 6A | E3
+Reinier Zonneveld - Rave Tool | 142 | 7A | E5
+Nico Moreno - Cyberpunk | 144 | 5A | E5
+Pegassi - Brutal Mind | 143 | 8A | E5
+Enrico Sangiuliano - Biomechanics | 139 | 4A | E4
+Dax J - Hard Pulse | 144 | 6A | E5
+Ben Klock - Subzero | 138 | 7A | E3
+Space 92 - Warehouse | 141 | 5B | E4` };
+
 const VIBES = {
   build: { label: "Gradual Build", dir: 1, target: p => 1.4 + 3.6 * Math.pow(p, 1.2) },
   peak: { label: "Peak Time Banger", dir: 0, target: p => p < .15 ? 3.6 + p * 9 : (p > .55 && p < .7 ? 4 : 5) },
@@ -572,7 +626,43 @@ function parseList(text) {
   return { tracks: out, dupes };
 }
 
-function arrange(tracks, vibe, limitCount) {
+const DEFAULT_OPTS = { strictness: 2, tempoFlex: 6 };
+const STRICTNESS_HINTS = {
+  1: "Strict: only same or adjacent keys.",
+  2: "Balanced: also allows +1/+2 energy boosts.",
+  3: "Free: any key transition is acceptable."
+};
+const OFF_RULE = 14; // penalty for a key move the chosen strictness does not allow
+
+function normOpts(o) {
+  const num = (v, lo, hi, d) => Number.isFinite(+v) && v !== "" && v != null ? Math.min(hi, Math.max(lo, Math.round(+v))) : d;
+  o = o || {};
+  return {
+    strictness: num(o.strictness, 1, 3, DEFAULT_OPTS.strictness),
+    tempoFlex: num(o.tempoFlex, 1, 10, DEFAULT_OPTS.tempoFlex)
+  };
+}
+
+// Key transition cost for a strictness level:
+// 1 = same / adjacent / relative only, 2 = + energy boosts (+2 and +7 steps), 3 = any key, barely penalised.
+function keyPenalty(a, b, level) {
+  const rel = relation(a, b);
+  if (level >= 3) return rel.cost * .2;
+  const d = (b.n - a.n + 12) % 12, same = a.m === b.m;
+  const tight = same ? (d === 0 || d === 1 || d === 11) : d === 0;
+  const boost = same && (d === 2 || d === 7);
+  return rel.cost + (tight || (level === 2 && boost) ? 0 : OFF_RULE);
+}
+
+// BPM jump cost: gentle inside the allowed jump, steep once it exceeds it.
+function tempoPenalty(a, b, flex) {
+  const jump = Math.abs(b.bpm - a.bpm);
+  if (jump <= flex) return 1.2 * jump / flex + .05 * jump;
+  return 1.2 + .05 * jump + 6 * (jump - flex);
+}
+
+function arrange(tracks, vibe, limitCount, opts) {
+  const o = normOpts(opts);
   let pool = tracks;
   const n = limitCount && limitCount < pool.length ? limitCount : pool.length;
   const W = 160;
@@ -582,7 +672,7 @@ function arrange(tracks, vibe, limitCount) {
   
   const step = pool.map(a => pool.map(b => {
     const pct = Math.abs(b.bpm - a.bpm) / a.bpm * 100;
-    let c = relation(a.key, b.key).cost + (pct <= 2 ? pct * .3 : .6 + (pct - 2) ** 2 * .5);
+    let c = keyPenalty(a.key, b.key, o.strictness) + tempoPenalty(a, b, o.tempoFlex);
     if (vibe.dir > 0 && b.bpm < a.bpm) c += pct * .8 * vibe.dir;
     if (Math.abs(b.energy - a.energy) >= 3) c += 2;
     return c;
@@ -804,6 +894,26 @@ function updateCount() {
   $("count").textContent = `${n} ${n === 1 ? "line" : "lines"}`;
 }
 
+function readOpts() {
+  return normOpts({ strictness: $("strictness").value, tempoFlex: $("tempo-flex").value });
+}
+
+function syncSliders() {
+  const o = readOpts();
+  $("strictness-val").textContent = `${o.strictness} / 3`;
+  $("strictness-hint").textContent = STRICTNESS_HINTS[o.strictness];
+  $("tempo-flex-val").textContent = `±${o.tempoFlex} BPM`;
+}
+
+function applyPreset(id) {
+  const p = PRESETS[id];
+  $("tracks").value = p.tracks;
+  if (p.strictness) $("strictness").value = p.strictness;
+  if (p.tempoFlex) $("tempo-flex").value = p.tempoFlex;
+  syncSliders();
+  updateCount();
+}
+
 function run(instant) {
   const parsed = parseList($("tracks").value);
   const err = $("error");
@@ -816,13 +926,14 @@ function run(instant) {
   const vibeId = document.querySelector('input[name="vibe"]:checked').value;
   const presetId = $("preset").value;
   const limit = $("set-len").value === "all" ? null : parseInt($("set-len").value, 10);
+  const opts = readOpts();
   
   const finish = () => {
     try {
       current = {
         name: presetId ? PRESETS[presetId].label : "Harmonic Set",
-        vibe: VIBES[vibeId].label, vibeId,
-        order: arrange(parsed.tracks, VIBES[vibeId], limit)
+        vibe: VIBES[vibeId].label, vibeId, opts,
+        order: arrange(parsed.tracks, VIBES[vibeId], limit, opts)
       };
       render(current, parsed);
     } catch (e) {
@@ -920,10 +1031,13 @@ $("btn-fetch").addEventListener("click", async () => {
 $("form").addEventListener("submit", e => { e.preventDefault(); run(false); });
 $("preset").addEventListener("change", e => {
   if (!e.target.value) return;
-  $("tracks").value = PRESETS[e.target.value].tracks;
-  updateCount();
+  applyPreset(e.target.value);
   run(false);
 });
+for (const id of ["strictness", "tempo-flex"]) {
+  $(id).addEventListener("input", syncSliders);
+  $(id).addEventListener("change", () => { syncSliders(); run(false); });
+}
 $("tracks").addEventListener("input", () => { $("preset").value = ""; updateCount(); });
 document.querySelectorAll('input[name="vibe"]').forEach(r => r.addEventListener("change", () => run(false)));
 $("set-len").addEventListener("change", () => run(false));
@@ -937,8 +1051,7 @@ $("copy").addEventListener("click", () => {
 });
 
 $("preset").value = "tech";
-$("tracks").value = PRESETS.tech.tracks;
-updateCount();
+applyPreset("tech");
 run(true);
 checkBackend();
 </script>
