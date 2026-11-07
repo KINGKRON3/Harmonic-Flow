@@ -101,6 +101,7 @@ def test_spotify_endpoint_returns_real_durations(monkeypatch):
     status, body = post(PLAYLIST_URL + "?si=abc123")
     assert status == 200
     assert body == {
+        "name": "Test",
         "tracks": ["Franky Rizardo - Shinjuku"],
         "details": [{"artist": "Franky Rizardo", "title": "Shinjuku", "duration_ms": 167905}],
         "count": 1,
@@ -143,6 +144,7 @@ def test_live_spotify_playlist():
     assert "Robbie Doherty - Call It What You Like" in body["tracks"]
     assert all(" - " in t for t in body["tracks"])
     assert all(d["duration_ms"] and d["duration_ms"] > 30_000 for d in body["details"])
+    assert body["name"] == "Bar"
 
 
 # ---------------------------------------------------------------------------
@@ -416,3 +418,63 @@ def test_rekordbox_xml_parses_with_a_real_xml_parser(tmp_path):
         assert all(float(m.get("Start")) <= total for m in marks)
     assert tracks[0].get("Artist").startswith('x" onload="1\' <![CDATA[ &'), "hostile text round-trips as plain data"
     assert len(root.findall("./PLAYLISTS//TRACK")) == 2
+
+
+ARC_PHASES = {
+    "classic": ["1. Warm-up", "2. Build-up", "3. Peak Hour", "4. Outro"],
+    "slow": ["1. Warm-up", "2. Build-up", "3. Peak Hour"],
+    "banger": ["1. Opener", "2. Peak Hour", "3. Closer"],
+    "coaster": ["1. Build-up", "2. Peak 1", "3. Breather", "4. Peak 2", "5. Outro"],
+}
+
+
+@pytest.fixture(scope="module")
+def arc_exports(tmp_path_factory):
+    """Rekordbox XML files produced by the real frontend code for each drama arc."""
+    if shutil.which("node") is None:
+        pytest.skip("node not installed")
+    out = tmp_path_factory.mktemp("arc") / "{arc}.xml"
+    res = subprocess.run(["node", "--test", r"--test-name-pattern=Rekordbox XML \(", "tests/frontend.test.mjs"],
+                         cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                         env={**os.environ, "HF_XML_ARC_OUT": str(out)})
+    assert res.returncode == 0, res.stdout[-3000:] + res.stderr
+    return {arc: ET.parse(str(out).replace("{arc}", arc)).getroot() for arc in ARC_PHASES}
+
+
+@pytest.mark.parametrize("arc", list(ARC_PHASES))
+def test_rekordbox_playlist_tree_follows_the_arc(arc, arc_exports):
+    root = arc_exports[arc]
+    ids = [t.get("TrackID") for t in root.findall("./COLLECTION/TRACK")]
+    assert len(ids) == 20 == int(root.find("COLLECTION").get("Entries"))
+
+    top = root.find("./PLAYLISTS/NODE")
+    assert (top.get("Name"), top.get("Type")) == ("ROOT", "0")
+    children = list(top)
+    assert int(top.get("Count")) == len(children) == 2
+
+    full, folder = children
+    assert (full.get("Name"), full.get("Type")) == ("HarmonicFlow - Full Set", "1")
+    full_keys = [t.get("Key") for t in full]
+    assert full_keys == ids and int(full.get("Entries")) == 20, "whole set in chronological order"
+
+    assert (folder.get("Name"), folder.get("Type")) == ("HarmonicFlow - Phases", "0")
+    phases = list(folder)
+    assert [p.get("Name") for p in phases] == ARC_PHASES[arc]
+    assert int(folder.get("Count")) == len(phases)
+    for p in phases:
+        keys = [t.get("Key") for t in p]
+        assert keys and int(p.get("Entries")) == len(keys) and p.get("Type") == "1"
+    assert [t.get("Key") for p in phases for t in p] == full_keys, "phases partition the set without gaps or overlaps"
+
+
+@pytest.mark.parametrize("arc", list(ARC_PHASES))
+def test_rekordbox_hot_cues_stay_on_bars_and_inside_each_track(arc, arc_exports):
+    for tr in arc_exports[arc].findall("./COLLECTION/TRACK"):
+        total, bpm = int(tr.get("TotalTime")), float(tr.get("AverageBpm"))
+        marks = tr.findall("POSITION_MARK")
+        assert [m.get("Num") for m in marks] == [str(i) for i in range(8)], "hot cues A-H"
+        starts = [float(m.get("Start")) for m in marks]
+        assert starts == sorted(starts) and starts[0] == 0 and starts[-1] <= total
+        for s in starts:
+            bars = s * bpm / 240
+            assert abs(bars - round(bars)) < 0.02, f"{s}s is not on a bar line at {bpm} BPM"

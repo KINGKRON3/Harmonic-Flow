@@ -131,12 +131,20 @@ SPOTIFY_PLAYLIST_RE = re.compile(r'playlist/([a-zA-Z0-9]{22})')
 NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S)
 
 
-def parse_spotify_embed_details(html):
-    """Picks tracks (artist, title, duration_ms) from the __NEXT_DATA__ JSON of a Spotify embed page."""
+def _spotify_entity(html):
     m = NEXT_DATA_RE.search(html)
     if not m:
         raise ValueError("Spotifyn embed-sivulta ei löytynyt raitadataa.")
-    entity = json.loads(m.group(1))["props"]["pageProps"]["state"]["data"]["entity"]
+    return json.loads(m.group(1))["props"]["pageProps"]["state"]["data"]["entity"]
+
+
+def parse_spotify_embed_name(html):
+    return clean_text(_spotify_entity(html).get("name"), 80) or "Spotify playlist"
+
+
+def parse_spotify_embed_details(html):
+    """Picks tracks (artist, title, duration_ms) from the __NEXT_DATA__ JSON of a Spotify embed page."""
+    entity = _spotify_entity(html)
     details = []
     for t in entity.get("trackList", []):
         title = clean_text(t.get("title"), 120)
@@ -163,7 +171,7 @@ def fetch_spotify_playlist(playlist_id):
         timeout=10,
     )
     resp.raise_for_status()
-    return parse_spotify_embed_details(resp.text)
+    return parse_spotify_embed_name(resp.text), parse_spotify_embed_details(resp.text)
 
 
 def fetch_ytdlp_playlist(url):
@@ -173,6 +181,7 @@ def fetch_ytdlp_playlist(url):
             info = ydl.extract_info(url, download=False)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Virhe linkin purkamisessa: {e}")
+    name = clean_text(info.get('title'), 80) or "Playlist"
     details = []
     for e in (info.get('entries') or [info]):
         if not e:
@@ -183,7 +192,7 @@ def fetch_ytdlp_playlist(url):
             "title": clean_text(clean_track_name(e.get('title') or 'Unknown'), 120) or "Unknown",
             "duration_ms": int(duration * 1000) if isinstance(duration, (int, float)) and duration > 0 else None,
         })
-    return details
+    return name, details
 
 
 @app.get("/")
@@ -207,16 +216,16 @@ def fetch_playlist(req: PlaylistRequest):
         if not pl_match:
             raise HTTPException(status_code=400, detail="Virheellinen Spotify-soittolistan linkki.")
         try:
-            details = fetch_spotify_playlist(pl_match.group(1))
+            name, details = fetch_spotify_playlist(pl_match.group(1))
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Virhe Spotifyn haussa: {e}")
         if not details:
             raise HTTPException(status_code=400, detail="Spotifyn soittolistaa ei saatu luettua. Varmista, että soittolista on julkinen.")
     else:
-        details = fetch_ytdlp_playlist(url)
+        name, details = fetch_ytdlp_playlist(url)
 
     tracks = [f"{d['artist']} - {d['title']}" for d in details]
-    return {"tracks": tracks, "details": details, "count": len(tracks)}
+    return {"name": name, "tracks": tracks, "details": details, "count": len(tracks)}
 
 
 # ---------------------------------------------------------------------------

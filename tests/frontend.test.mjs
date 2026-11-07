@@ -25,7 +25,9 @@ function makeEnv() {
     }
     return els.get(id);
   };
-  el("set-len").value = "all";
+  el("set-len").value = "7200";
+  el("arc").value = "classic";
+  el("peak-pos").value = "75";
   el("strictness").value = "2";
   el("tempo-flex").value = "6";
   const timers = [];
@@ -48,7 +50,7 @@ function makeEnv() {
   };
   vm.createContext(ctx);
   // Expose top-level const/function bindings for the tests.
-  vm.runInContext(script + "\n;globalThis.__hf = { run, buildXML, hotCues, arrange, parseList, keyPenalty, tempoPenalty, normOpts, applyPreset, mixTip, tipFor, aiTips, fmtTime, transition, get current() { return current; }, PRESETS, VIBES };", ctx);
+  vm.runInContext(script + "\n;globalThis.__hf = { run, buildXML, hotCues, arrange, parseList, keyPenalty, tempoPenalty, normOpts, applyPreset, mixTip, tipFor, aiTips, fmtTime, transition, ARCS, arcShape, splitPhases, readArc, arrangeForDuration, takeByDuration, sources, parsePool, addSource, renderPool, sumSeconds, trackSeconds, get current() { return current; }, PRESETS, VIBES };", ctx);
   const flush = () => { while (timers.length) timers.shift()(); };
   return { ctx, el, flush, hf: ctx.__hf };
 }
@@ -432,17 +434,19 @@ const aiReply = (over = {}) => ({
   })
 });
 
-test("AI Curate: posts the prompt, keeps the AI order and shows the AI hints escaped", async () => {
+test("AI Curate: posts the prompt, adds an AI list to the pool, keeps its order and shows escaped hints", async () => {
   const { ctx, el, hf, flush } = makeEnv();
   const calls = [];
+  const before = el("tracks").value;
   ctx.fetch = async (url, init) => { calls.push([url, JSON.parse(init.body)]); return aiReply(); };
   el("ai-prompt").value = "Dark peak-time techno, 130 -> 140 BPM";
   await el("btn-ai").listeners.click();
   flush();
   assert.deepEqual(calls, [["/api/ai-suggest", { prompt: "Dark peak-time techno, 130 -> 140 BPM" }]]);
-  assert.equal(el("preset").value, "");
-  assert.equal(el("tracks").value.split("\n").length, 8);
-  assert.match(el("tracks").value.split("\n")[0], /^Artist 0 - Track <0> \| 130 \| 5A \| E3 \| 5:00$/);
+  assert.equal(el("tracks").value, before, "custom list is not overwritten");
+  const ai = hf.sources.find(x => x.id === "ai");
+  assert.match(ai.text.split("\n")[0], /^Artist 0 - Track <0> \| 130 \| 5A \| E3 \| 5:00$/);
+  assert.match(el("pool").innerHTML, /AI: Dark peak-time techno, 130 -\.\.\./);
   assert.deepEqual(Array.from(hf.current.order, t => t.artist), Array.from({ length: 8 }, (_, i) => `Artist ${i}`), "AI order kept");
   assert.equal(hf.current.name, "AI Curated Set");
   const out = el("timeline").innerHTML;
@@ -486,15 +490,367 @@ test("AI Curate: empty prompt, server error and offline backend are reported, ne
   assert.equal(el("btn-ai").textContent, "AI Curate Set");
 });
 
-test("playlist fetch writes real track lengths into the track list", async () => {
-  const { ctx, el, hf } = makeEnv();
-  ctx.fetch = async () => ({ ok: true, json: async () => ({
-    tracks: ["Franky Rizardo - Shinjuku"], count: 1,
+test("playlist fetch keeps real track lengths in the new pool list", async () => {
+  const env = makeEnv();
+  env.ctx.fetch = async () => ({ ok: true, json: async () => ({
+    name: "Bar", tracks: ["Franky Rizardo - Shinjuku"], count: 2,
     details: [{ artist: "Franky Rizardo", title: "Shinjuku", duration_ms: 167905 }, { artist: "Gaskin", title: "No Limits", duration_ms: null }]
   }) });
-  el("playlist-url").value = "https://open.spotify.com/playlist/2Mg5wgO65IZ0aOdh2hlg8S";
-  await el("btn-fetch").listeners.click();
-  assert.equal(el("tracks").value, "Franky Rizardo - Shinjuku | 2:48\nGaskin - No Limits");
-  const { tracks } = hf.parseList(el("tracks").value);
-  assert.deepEqual(Array.from(tracks, t => t.duration), [168, 360]);
+  env.el("playlist-url").value = "https://open.spotify.com/playlist/2Mg5wgO65IZ0aOdh2hlg8S";
+  await env.el("btn-fetch").listeners.click();
+  const src = env.hf.sources[1];
+  assert.equal(src.name, "Bar");
+  assert.equal(src.text, "Franky Rizardo - Shinjuku | 2:48\nGaskin - No Limits");
+  assert.deepEqual(Array.from(env.hf.parseList(src.text).tracks, t => t.duration), [168, 360]);
+});
+
+// ---- Drama arcs ------------------------------------------------------------------
+
+const close = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
+const mean = xs => xs.reduce((s, x) => s + x, 0) / xs.length;
+
+test("markup: arc menu, peak slider, duration choices and pool replace the old vibe radios", () => {
+  assert.ok(!html.includes('name="vibe"'));
+  const arcs = [...html.match(/<select id="arc">([\s\S]*?)<\/select>/)[1].matchAll(/<option value="(\w+)"[^>]*>([^<]+)</g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(arcs, [["classic", "Classic Club Journey"], ["slow", "Steadily Rising / Slow Burn"],
+    ["banger", "Peak Time Banger / Festival"], ["coaster", "Rollercoaster / Two Peaks"]]);
+  assert.match(html, /<label for="arc">Set Energy Curve \/ Drama Arc<\/label>/);
+  assert.match(html, /<input type="range" id="peak-pos" min="50" max="90" step="5"/);
+  const lens = [...html.match(/<select id="set-len">([\s\S]*?)<\/select>/)[1].matchAll(/value="(\d+)"/g)].map(m => +m[1]);
+  assert.deepEqual(lens, [3600, 7200, 10800, 14400]);
+  assert.match(html, /<div class="pool" id="pool"/);
+});
+
+test("classic arc at the default peak: 20% warm-up E1-E2, 40% build E3-E4, 30% peak E5, 10% outro E3", () => {
+  const { hf } = makeEnv();
+  const a = hf.arcShape("classic", .75);
+  for (const p of [0, .05, .1, .19]) assert.ok(a.target(p) >= 1 && a.target(p) <= 2, `warm-up p=${p}`);
+  for (const p of [.21, .4, .59]) assert.ok(a.target(p) >= 3 && a.target(p) <= 4, `build p=${p}`);
+  for (const p of [.61, .75, .89]) assert.equal(a.target(p), 5, `peak p=${p}`);
+  for (const p of [.91, 1]) assert.equal(a.target(p), 3, `outro p=${p}`);
+  assert.deepEqual(Array.from(a.phases, ph => ph.name), ["Warm-up", "Build-up", "Peak Hour", "Outro"]);
+  [.2, .6, .9, 1].forEach((end, i) => assert.ok(close(a.phases[i].end, end), `phase ${i} ends at ${a.phases[i].end}`));
+});
+
+test("peak position slider moves the main peak and is clamped to 50-90%", () => {
+  const { hf } = makeEnv();
+  const early = hf.arcShape("classic", .5), late = hf.arcShape("classic", .9);
+  assert.equal(early.target(.5), 5);
+  assert.equal(early.target(.8), 3, "outro after an early peak");
+  assert.equal(late.target(.9), 5);
+  assert.ok(late.target(.5) <= 4, "still building at 50% when the peak is at 90%");
+  assert.equal(hf.arcShape("classic", .1).peakPos, .5);
+  assert.equal(hf.arcShape("classic", 7).peakPos, .9);
+  assert.equal(hf.arcShape("nope", NaN).id, "classic");
+  for (const id of ["classic", "slow", "banger", "coaster"]) for (const pk of [.5, .6, .75, .9]) {
+    const ends = hf.arcShape(id, pk).phases.map(ph => ph.end);
+    assert.deepEqual(Array.from(ends), [...ends].sort((x, y) => x - y), `${id}@${pk} phases ascending`);
+    assert.equal(ends[ends.length - 1], 1);
+    for (let i = 0; i <= 40; i++) assert.ok(hf.arcShape(id, pk).target(i / 40) >= 1 && hf.arcShape(id, pk).target(i / 40) <= 5);
+  }
+});
+
+test("slow burn climbs linearly from low energy to the closing peak", () => {
+  const { hf } = makeEnv();
+  const a = hf.arcShape("slow", .9);
+  assert.equal(a.target(0), 1);
+  assert.equal(a.target(.9), 5);
+  assert.ok(close(a.target(.45), 3));
+  let prev = 0;
+  for (let i = 0; i <= 40; i++) { assert.ok(a.target(i / 40) >= prev); prev = a.target(i / 40); }
+});
+
+test("festival arc keeps E4-E5 from start to finish", () => {
+  const { hf } = makeEnv();
+  for (const pk of [.5, .6, .9]) for (let i = 0; i <= 40; i++) assert.ok(hf.arcShape("banger", pk).target(i / 40) >= 4);
+});
+
+test("rollercoaster: peak 1, short E3 breather, then the main peak 2", () => {
+  const { hf } = makeEnv();
+  for (const pk of [.5, .75, .9]) {
+    const a = hf.arcShape("coaster", pk), p1 = pk * .45, mid = (p1 + pk) / 2;
+    assert.equal(a.target(p1), 5);
+    assert.equal(a.target(mid), 3);
+    assert.equal(a.target(pk), 5);
+    assert.ok(a.target(0) <= 2.5);
+    assert.ok(a.target(p1 / 2) > a.target(0) && a.target(p1 / 2) < 5, "rises into peak 1");
+  }
+});
+
+// arrange(): 50 tracks, 10 of each energy level, harmonically chained keys, equal tempo
+const energyPool = () => Array.from({ length: 50 }, (_, i) => ({
+  artist: "A" + i, title: "T" + i, bpm: 126, energy: (i % 5) + 1, key: { n: 7 + (i % 3), m: "A" }, est: {}, duration: 300
+}));
+const arcOrder = (hf, id, pk, n = 20) => hf.arrange(energyPool(), hf.arcShape(id, pk), n, { strictness: 2, tempoFlex: 6 });
+const winMean = (order, a, b) => mean(order.filter((_, i) => i / (order.length - 1) >= a && i / (order.length - 1) <= b).map(t => t.energy));
+
+test("arrange follows the classic arc and never opens with the biggest banger", () => {
+  const { hf } = makeEnv();
+  const o = arcOrder(hf, "classic", .75);
+  assert.equal(o.length, 20);
+  assert.ok(o[0].energy <= 2, `opener E${o[0].energy}`);
+  assert.ok(mean(o.slice(0, 4).map(t => t.energy)) <= 2.25, "warm-up");
+  assert.ok(winMean(o, .62, .88) >= 4.9, "peak hour");
+  assert.ok(winMean(o, .22, .58) >= 3 && winMean(o, .22, .58) <= 4.1, "build-up");
+  assert.ok(Math.abs(mean(o.slice(-2).map(t => t.energy)) - 3) <= .5, "outro");
+});
+
+test("arrange: slow burn rises, festival stays high, rollercoaster has two peaks", () => {
+  const { hf } = makeEnv();
+  const slow = arcOrder(hf, "slow", .9);
+  assert.ok(slow[0].energy <= 2);
+  assert.ok(mean(slow.slice(-4).map(t => t.energy)) - mean(slow.slice(0, 4).map(t => t.energy)) >= 2.5, "climb");
+  assert.ok(slow.every((t, i) => i < 2 || t.energy >= slow[i - 2].energy - 1), "no big dips on the way up");
+
+  const fest = arcOrder(hf, "banger", .6);
+  assert.ok(fest.every(t => t.energy >= 4), "E4-E5 throughout: " + fest.map(t => t.energy));
+
+  const co = arcOrder(hf, "coaster", .75), pk = .75, p1 = pk * .45, mid = (p1 + pk) / 2;
+  const at = (p, w = .05) => winMean(co, p - w, p + w);
+  assert.ok(at(p1) >= 4.5 && at(pk) >= 4.5, "two peaks");
+  assert.ok(at(mid, .04) <= 3.6, "breather in between: " + co.map(t => t.energy));
+  assert.ok(co[0].energy <= 3);
+});
+
+test("arrange: the peak position slider shifts where the peak lands", () => {
+  const { hf } = makeEnv();
+  const centroid = o => mean(o.map((t, i) => [t.energy, i / (o.length - 1)]).filter(([e]) => e === 5).map(([, p]) => p));
+  assert.ok(centroid(arcOrder(hf, "classic", .55)) + .12 < centroid(arcOrder(hf, "classic", .9)));
+});
+
+// ---- 1-4 h duration -------------------------------------------------------------------
+
+const lines = (n, prefix = "L", base = 0) => Array.from({ length: n }, (_, i) =>
+  `${prefix}Artist${i} - ${prefix}Title${i} | ${124 + (i % 6)} | ${7 + (i % 3)}A | E${(i % 5) + 1} | ${4 + (i % 4)}:${String((i * 7) % 60).padStart(2, "0")}`).join("\n");
+
+test("duration choices 1-4 h limit the number of tracks to the target time", () => {
+  const { el, hf, flush } = makeEnv();
+  el("tracks").value = lines(80);
+  const counts = [];
+  for (const sec of [3600, 7200, 10800, 14400]) {
+    el("set-len").value = String(sec);
+    el("set-len").listeners.change();
+    flush();
+    const run = hf.sumSeconds(hf.current.order);
+    assert.equal(hf.current.targetSec, sec);
+    assert.ok(Math.abs(run - sec) <= 420, `${sec / 3600} h: runtime ${run}s`);
+    assert.match(el("stats").innerHTML, new RegExp(`Target</dt><dd>${hf.fmtTime(sec)}`));
+    assert.equal(new Set(hf.current.order).size, hf.current.order.length, "no repeated track");
+    counts.push(hf.current.order.length);
+  }
+  assert.ok(counts.every((c, i) => !i || c > counts[i - 1]), "more time, more tracks: " + counts);
+});
+
+test("duration: a short pool uses everything and says so; the loader stays hidden", () => {
+  const { el, hf, flush } = makeEnv();
+  el("tracks").value = lines(10);
+  el("set-len").value = "14400";
+  el("set-len").listeners.change();
+  flush();
+  assert.equal(hf.current.order.length, 10);
+  assert.match(el("notice").textContent, /only add up to .* of the 4:00:00 target/);
+  assert.equal(el("loader").hidden, true);
+});
+
+test("duration: 4 h from a 120-track pool arranges in reasonable time", () => {
+  const { el, hf } = makeEnv();
+  el("tracks").value = lines(120);
+  el("set-len").value = "14400";
+  const t0 = Date.now();
+  hf.run(true);
+  const ms = Date.now() - t0;
+  assert.ok(Math.abs(hf.sumSeconds(hf.current.order) - 14400) <= 420, "runtime " + hf.sumSeconds(hf.current.order));
+  assert.ok(ms < 15000, `took ${ms} ms`);
+  console.log(`# 4h arrange of ${hf.current.order.length}/120 tracks: ${ms} ms`);
+});
+
+test("takeByDuration keeps the AI order and trims to the target", () => {
+  const { hf } = makeEnv();
+  const tr = Array.from({ length: 30 }, (_, i) => ({ title: "t" + i, duration: 300 }));
+  const out = Array.from(hf.takeByDuration(tr, 3600), t => t.title);
+  assert.equal(out.length, 12);
+  assert.deepEqual(out, tr.slice(0, 12).map(t => t.title));
+});
+
+// ---- Track pool ---------------------------------------------------------------------------
+
+const playlistReply = (name, n, prefix) => ({
+  ok: true,
+  json: async () => ({
+    name, count: n, tracks: [],
+    details: Array.from({ length: n }, (_, i) => ({ artist: `${prefix}Artist${i}`, title: `${prefix}Title${i}`, duration_ms: (180 + i * 7) * 1000 }))
+  })
+});
+
+async function fetchList(env, url, reply) {
+  env.ctx.fetch = async () => reply;
+  env.el("playlist-url").value = url;
+  await env.el("btn-fetch").listeners.click();
+  env.flush();
+}
+
+test("pool: several lists can be fetched in a row without overwriting raw data", async () => {
+  const env = makeEnv();
+  const { el, hf } = env;
+  const before = el("tracks").value;
+  await fetchList(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", playlistReply("Bar", 7, "B"));
+  await fetchList(env, "https://soundcloud.com/x/sets/latin", playlistReply("Latin Tech", 24, "L"));
+  assert.equal(el("tracks").value, before, "custom list untouched");
+  assert.equal(hf.sources.length, 3);
+  const pool = el("pool").innerHTML;
+  assert.match(pool, /data-id="url:https:\/\/open\.spotify\.com\/playlist\/A+" checked><span class="pool-name">Bar<\/span><span class="mono">\(7\)<\/span>/);
+  assert.match(pool, /<span class="pool-name">Latin Tech<\/span><span class="mono">\(24\)<\/span>/);
+  assert.match(pool, /<span class="pool-name">Tech House Peak Hour<\/span><span class="mono">\(12\)<\/span>/);
+  assert.equal(el("pool-total").textContent, "43 tracks selected");
+  const titles = new Set(Array.from(hf.current.order, t => t.title));
+  assert.ok([...titles].some(t => t.startsWith("BTitle")) && [...titles].some(t => t.startsWith("LTitle")), "union of ticked lists");
+  assert.equal(el("playlist-url").value, "", "input cleared for the next link");
+});
+
+test("pool: arrange only uses ticked lists", async () => {
+  const env = makeEnv();
+  const { el, hf } = env;
+  await fetchList(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", playlistReply("Bar", 7, "B"));
+  await fetchList(env, "https://soundcloud.com/x/sets/latin", playlistReply("Latin Tech", 24, "L"));
+  const tick = (id, checked) => { el("pool").listeners.change({ target: { dataset: { id }, checked } }); env.flush(); };
+
+  tick("manual", false);
+  tick("url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", false);
+  assert.equal(hf.current.order.length, 24);
+  assert.ok(hf.current.order.every(t => t.title.startsWith("LTitle")), "only Latin Tech");
+  assert.equal(el("pool-total").textContent, "24 tracks selected");
+
+  tick("url:https://soundcloud.com/x/sets/latin", false);
+  assert.equal(el("error").hidden, false, "nothing ticked -> clear message");
+  assert.match(el("error").textContent, /Select at least two tracks/);
+  assert.equal(el("loader").hidden, true);
+
+  tick("url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", true);
+  assert.equal(el("error").hidden, true);
+  assert.ok(hf.current.order.every(t => t.title.startsWith("BTitle")));
+  assert.equal(hf.current.order.length, 7);
+});
+
+test("pool: re-fetching the same URL replaces the entry, x removes it, names are escaped", async () => {
+  const env = makeEnv();
+  const { el, hf } = env;
+  const url = "https://www.youtube.com/playlist?list=PL1";
+  await fetchList(env, url, playlistReply("<img onerror=1>", 5, "Y"));
+  await fetchList(env, url, playlistReply("<img onerror=1>", 9, "Y"));
+  assert.equal(hf.sources.length, 2);
+  assert.ok(!/<img/.test(el("pool").innerHTML));
+  assert.match(el("pool").innerHTML, /&lt;img onerror=1&gt;<\/span><span class="mono">\(9\)/);
+  el("pool").listeners.click({ target: { dataset: { remove: "manual" } } });
+  assert.equal(hf.sources.length, 2, "custom list cannot be removed");
+  el("pool").listeners.click({ target: { dataset: { remove: "url:" + url } } });
+  env.flush();
+  assert.equal(hf.sources.length, 1);
+  assert.equal(hf.current.order.length, 12);
+});
+
+test("pool: fetch errors are shown and never add a list", async () => {
+  const env = makeEnv();
+  env.ctx.fetch = async () => ({ ok: false, json: async () => ({ detail: "Paikalliset ja yksityiset osoitteet on estetty." }) });
+  env.el("playlist-url").value = "http://127.0.0.1/";
+  await env.el("btn-fetch").listeners.click();
+  assert.equal(env.el("fetch-error").textContent, "Paikalliset ja yksityiset osoitteet on estetty.");
+  assert.equal(env.hf.sources.length, 1);
+  assert.equal(env.el("btn-fetch").disabled, false);
+});
+
+// ---- Arc controls wiring ----------------------------------------------------------------------
+
+test("arc menu: picking an arc sets its natural peak position, redraws the curve and re-arranges", () => {
+  const { el, hf, flush } = makeEnv();
+  el("arc").value = "slow";
+  el("arc").listeners.change();
+  flush();
+  assert.equal(el("peak-pos").value, 90);
+  assert.equal(el("peak-pos-val").textContent, "90%");
+  assert.equal(hf.current.arc, "slow");
+  assert.match(el("set-vibe").textContent, /Steadily Rising \/ Slow Burn \/ peak 90%/);
+  assert.match(el("arc-hint").textContent, /Linear climb/);
+  assert.match(el("arc-preview").innerHTML, /<polyline points="0\.0,28\.0 /);
+  el("peak-pos").value = "60";
+  el("peak-pos").listeners.input();
+  assert.equal(el("peak-pos-val").textContent, "60%");
+  el("peak-pos").listeners.change();
+  flush();
+  assert.equal(hf.current.peakPos, .6);
+  assert.equal(el("loader").hidden, true);
+});
+
+test("generated set is ordered by the chosen arc (energy of the opener < peak)", () => {
+  const { el, hf, flush } = makeEnv();
+  el("tracks").value = lines(40);
+  for (const arc of ["classic", "slow", "coaster"]) {
+    el("arc").value = arc;
+    el("arc").listeners.change();
+    flush();
+    const o = hf.current.order;
+    assert.ok(o[0].energy <= 3 && Math.max(...o.map(t => t.energy)) === 5 && o[0].energy < 5, `${arc} opener E${o[0].energy}`);
+  }
+});
+
+// ---- Rekordbox playlists by arc phase ------------------------------------------------------------
+
+function playlistsOf(xml) {
+  const root = xml.match(/<PLAYLISTS>([\s\S]*)<\/PLAYLISTS>/)[1];
+  const lists = [...root.matchAll(/<NODE Name="([^"]*)" Type="1" KeyType="0" Entries="(\d+)">([\s\S]*?)<\/NODE>/g)].map(m => ({
+    name: m[1], entries: +m[2], keys: [...m[3].matchAll(/<TRACK Key="(\d+)"\/>/g)].map(k => +k[1])
+  }));
+  const folder = root.match(/<NODE Type="0" Name="HarmonicFlow - Phases" Count="(\d+)">/);
+  return { lists, folderCount: folder ? +folder[1] : 0, rootCount: +root.match(/<NODE Type="0" Name="ROOT" Count="(\d+)">/)[1] };
+}
+
+const phaseNames = { classic: ["1. Warm-up", "2. Build-up", "3. Peak Hour", "4. Outro"], slow: ["1. Warm-up", "2. Build-up", "3. Peak Hour"],
+  banger: ["1. Opener", "2. Peak Hour", "3. Closer"], coaster: ["1. Build-up", "2. Peak 1", "3. Breather", "4. Peak 2", "5. Outro"] };
+
+for (const arc of Object.keys(phaseNames)) {
+  test(`Rekordbox XML (${arc}): Full Set plus one playlist per phase, in order, nothing lost`, () => {
+    const { el, hf, flush } = makeEnv();
+    el("tracks").value = lines(20);
+    el("set-len").value = "14400";
+    el("arc").value = arc;
+    el("arc").listeners.change();
+    flush();
+    const set = hf.current, n = set.order.length;
+    assert.equal(n, 20);
+    const xml = hf.buildXML(set);
+    const { lists, folderCount, rootCount } = playlistsOf(xml);
+    assert.equal(lists[0].name, "HarmonicFlow - Full Set");
+    assert.equal(lists[0].entries, n);
+    assert.deepEqual(lists[0].keys, Array.from({ length: n }, (_, i) => i + 1), "chronological");
+    assert.deepEqual(lists.slice(1).map(l => l.name), phaseNames[arc]);
+    assert.equal(folderCount, lists.length - 1);
+    assert.equal(rootCount, 2);
+    assert.deepEqual(lists.slice(1).flatMap(l => l.keys), lists[0].keys, "phases partition the full set in order");
+    for (const l of lists) assert.equal(l.entries, l.keys.length);
+    // every playlist entry refers to a COLLECTION track, each of which still has 8 hot cues
+    assert.equal((xml.match(/<TRACK TrackID=/g) || []).length, n);
+    assert.equal((xml.match(/<POSITION_MARK /g) || []).length, n * 8);
+    if (process.env.HF_XML_ARC_OUT) writeFileSync(process.env.HF_XML_ARC_OUT.replace("{arc}", arc), xml, "utf8");
+  });
+}
+
+test("Rekordbox XML: classic phase sizes follow the 20/40/30/10 split", () => {
+  const { el, hf, flush } = makeEnv();
+  el("tracks").value = lines(20);
+  el("set-len").value = "14400";
+  hf.run(true);
+  const { lists } = playlistsOf(hf.buildXML(hf.current));
+  assert.deepEqual(lists.slice(1).map(l => l.entries), [4, 8, 6, 2]);
+});
+
+test("Rekordbox XML: empty phases are dropped and numbering stays contiguous", () => {
+  const { hf } = makeEnv();
+  const order = ["A", "B", "C"].map((x, i) => ({ artist: x, title: x, bpm: 126, key: { n: 8, m: "A" }, energy: 3, duration: 300 }));
+  const { lists } = playlistsOf(hf.buildXML({ name: "x", order, arc: "coaster", peakPos: .75 }));
+  const phases = lists.slice(1);
+  assert.ok(phases.length >= 1 && phases.every(l => l.entries > 0));
+  phases.forEach((l, i) => assert.ok(l.name.startsWith(`${i + 1}. `), l.name));
+  assert.deepEqual(phases.flatMap(l => l.keys), [1, 2, 3]);
+  const none = playlistsOf(hf.buildXML({ name: "x", order }));
+  assert.equal(none.lists.length, 1);
+  assert.equal(none.rootCount, 1);
 });

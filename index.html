@@ -79,6 +79,16 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
 .vibes input:checked + span { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 .vibes input:focus-visible + span { outline: 1px solid var(--accent); outline-offset: 1px; }
 
+.pool { display: grid; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); max-height: 150px; overflow-y: auto; }
+.pool:empty { display: none; }
+.pool-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 8px; border-bottom: 1px solid #232323; }
+.pool-row:last-child { border-bottom: 0; }
+.pool-row label { display: flex; gap: 6px; align-items: center; min-width: 0; cursor: pointer; text-transform: none; letter-spacing: 0; font: 500 12px var(--font-ui); color: var(--fg); }
+.pool-row input { accent-color: var(--accent); margin: 0; }
+.pool-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pool-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+.pool-x:hover { color: var(--bad); }
+.arc-preview { width: 100%; height: 36px; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; }
 .set-panel { position: relative; min-height: 360px; }
 .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .stat { display: flex; gap: 6px; align-items: baseline; }
@@ -174,18 +184,48 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
           <p class="hint" id="ai-status" hidden></p>
         </div>
 
-        <div class="field">
+        <div class="field pool-field">
           <div class="field-header">
-            <label for="tracks">Track list</label>
-            <label for="set-len">Length</label>
+            <label id="pool-label">Track Pool</label>
+            <span class="hint" id="pool-total"></span>
           </div>
-          <select id="set-len">
-            <option value="all">Use all tracks</option>
-            <option value="18">1 Hour (~18 tracks)</option>
-            <option value="35" selected>2 Hours (~35 tracks)</option>
-          </select>
+          <div class="pool" id="pool" role="group" aria-labelledby="pool-label"></div>
+          <p class="hint">Each fetched or AI-curated list is added here. Only ticked lists are used to build the set.</p>
+        </div>
+
+        <div class="field">
+          <label for="tracks">Custom track list</label>
           <textarea id="tracks" spellcheck="false" wrap="off" placeholder="Artist - Title | 128 | 8A | E4 | 5:30"></textarea>
           <p class="hint">One track per line: <code>Artist - Title | BPM | Key | E1-E5 | m:ss</code>. Missing data is estimated (~).</p>
+        </div>
+
+        <div class="field">
+          <label for="set-len">Set Duration</label>
+          <select id="set-len">
+            <option value="3600">1 hour</option>
+            <option value="7200" selected>2 hours</option>
+            <option value="10800">3 hours</option>
+            <option value="14400">4 hours</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="arc">Set Energy Curve / Drama Arc</label>
+          <select id="arc">
+            <option value="classic" selected>Classic Club Journey</option>
+            <option value="slow">Steadily Rising / Slow Burn</option>
+            <option value="banger">Peak Time Banger / Festival</option>
+            <option value="coaster">Rollercoaster / Two Peaks</option>
+          </select>
+          <svg class="arc-preview" id="arc-preview" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <p class="hint" id="arc-hint"></p>
+          <div class="slider-row">
+            <div class="field-header">
+              <label for="peak-pos">Peak Position</label>
+              <output id="peak-pos-val" for="peak-pos"></output>
+            </div>
+            <input type="range" id="peak-pos" min="50" max="90" step="5" value="75">
+          </div>
         </div>
 
         <div class="field sliders">
@@ -207,15 +247,6 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
           </div>
         </div>
 
-        <fieldset class="field">
-          <legend>Set vibe</legend>
-          <div class="vibes">
-            <label><input type="radio" name="vibe" id="vibe-build" value="build"><span>Build</span></label>
-            <label><input type="radio" name="vibe" id="vibe-peak" value="peak" checked><span>Peak</span></label>
-            <label><input type="radio" name="vibe" id="vibe-chill" value="chill"><span>Warm-up</span></label>
-          </div>
-        </fieldset>
-
         <p class="error" id="error" role="alert" hidden></p>
         <button class="go" id="go" type="submit">Generate Harmonic Set</button>
       </form>
@@ -228,7 +259,7 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
         <button class="btn primary" id="dl-xml" type="button">Rekordbox XML (8 Hot Cues)</button>
         <button class="btn" id="dl-m3u" type="button">M3U Playlist</button>
         <button class="btn" id="copy" type="button">Copy Tracklist</button>
-        <p>Hot cues A-H stay inside each track's real length.</p>
+        <p>Hot cues A-H stay inside each track's real length. XML includes the full set and one playlist per arc phase.</p>
       </div>
       <div class="export-view" id="export-view" hidden>
         <div><strong id="export-name"></strong><button class="btn" id="export-close" type="button">Close</button></div>
@@ -331,6 +362,65 @@ const VIBES = {
   build: { label: "Gradual Build", dir: 1, target: p => 1.4 + 3.6 * Math.pow(p, 1.2) },
   peak: { label: "Peak Time Banger", dir: 0, target: p => p < .15 ? 3.6 + p * 9 : (p > .55 && p < .7 ? 4 : 5) },
   chill: { label: "Chill/Warm-up", dir: .5, target: p => 1.2 + 1.8 * p }
+};
+
+// ---- Drama arcs: target energy (1-5) over the set position p (0-1); pk = position of the main peak ----
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const PEAK_MIN = 50, PEAK_MAX = 90;
+
+function lerpPts(pts, p) {
+  if (p <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    if (p <= pts[i][0]) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+      return x1 === x0 ? y1 : y0 + (y1 - y0) * (p - x0) / (x1 - x0);
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+
+// Classic: warm-up (E1-E2) / build-up (E3-E4) / peak (E5) / outro (E3). At pk = 75% this is 20/40/30/10.
+const classicBounds = pk => { const ps = pk - .15; return [ps / 3, ps, Math.min(pk + .15, .96)]; };
+const coasterPts = pk => { const p1 = pk * .45; return [[0, 2], [p1, 5], [(p1 + pk) / 2, 3], [pk, 5], [1, 4]]; };
+
+const ARCS = {
+  classic: {
+    label: "Classic Club Journey", peak: 75, dir: .3,
+    hint: "20% warm-up E1-E2, 40% build-up E3-E4, 30% peak E5, 10% outro E3 (at 75%).",
+    target: (p, pk) => { const [w, b, e] = classicBounds(pk); return p < w ? 1 + p / w : p < b ? 3 + (p - w) / (b - w) : p <= e ? 5 : 3; },
+    phases: pk => { const [w, b, e] = classicBounds(pk); return [{ name: "Warm-up", end: w }, { name: "Build-up", end: b }, { name: "Peak Hour", end: e }, { name: "Outro", end: 1 }]; }
+  },
+  slow: {
+    label: "Steadily Rising / Slow Burn", peak: 90, dir: 1,
+    hint: "Linear climb from low energy straight to the closing peak.",
+    target: (p, pk) => lerpPts([[0, 1], [pk, 5], [1, 5]], p),
+    phases: pk => [{ name: "Warm-up", end: pk * .3 }, { name: "Build-up", end: pk * .8 }, { name: "Peak Hour", end: 1 }]
+  },
+  banger: {
+    label: "Peak Time Banger / Festival", peak: 60, dir: 0,
+    hint: "High energy E4-E5 from the first track to the last, no slow bits.",
+    target: (p, pk) => lerpPts([[0, 4], [pk, 5], [1, 5]], p),
+    phases: pk => [{ name: "Opener", end: .2 }, { name: "Peak Hour", end: .85 }, { name: "Closer", end: 1 }]
+  },
+  coaster: {
+    label: "Rollercoaster / Two Peaks", peak: 75, dir: 0,
+    hint: "Climb, peak 1, short E3 breather, then the main peak 2.",
+    target: (p, pk) => lerpPts(coasterPts(pk), p),
+    phases: pk => { const p1 = pk * .45; return [
+      { name: "Build-up", end: p1 - .07 }, { name: "Peak 1", end: p1 + .07 }, { name: "Breather", end: pk - .1 },
+      { name: "Peak 2", end: Math.min(pk + .1, .95) }, { name: "Outro", end: 1 }]; }
+  }
+};
+
+function arcShape(id, pk) {
+  const a = ARCS[id] || ARCS.classic;
+  pk = clamp(Number.isFinite(pk) ? pk : a.peak / 100, PEAK_MIN / 100, PEAK_MAX / 100);
+  return { id: ARCS[id] ? id : "classic", label: a.label, dir: a.dir, peakPos: pk, target: p => a.target(clamp(p, 0, 1), pk), phases: a.phases(pk) };
+}
+
+const phaseIndex = (shape, p) => {
+  const i = shape.phases.findIndex(ph => p <= ph.end + 1e-9);
+  return i < 0 ? shape.phases.length - 1 : i;
 };
 
 const MINOR = ["Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "Dbm"];
@@ -584,6 +674,14 @@ function hotCues(bpm, duration) {
 
 const trackSeconds = t => Number.isFinite(t.duration) && t.duration > 0 ? t.duration : DEFAULT_DURATION;
 
+// Splits the set into the arc's phases (by position in the set); empty phases are dropped, names are numbered.
+function splitPhases(set) {
+  const n = set.order.length, shape = arcShape(set.arc, set.peakPos);
+  const groups = shape.phases.map(ph => ({ name: ph.name, idx: [] }));
+  set.order.forEach((_, i) => groups[phaseIndex(shape, n > 1 ? i / (n - 1) : 0)].idx.push(i));
+  return groups.filter(g => g.idx.length).map((g, k) => ({ name: `${k + 1}. ${g.name}`, idx: g.idx }));
+}
+
 function buildXML(set) {
   const n = set.order.length;
   const rows = set.order.map((t, i) => {
@@ -598,7 +696,13 @@ function buildXML(set) {
     return `    <TRACK ${attrs.join(" ")}>\n${marksXml}\n    </TRACK>`;
   }).join("\n");
 
-  const refs = set.order.map((_, i) => `        <TRACK Key="${i + 1}"/>`).join("\n");
+  const refs = (idx, pad) => idx.map(i => `${pad}<TRACK Key="${i + 1}"/>`).join("\n");
+  const list = (name, idx, pad) => `${pad}<NODE Name="${xmlEsc(name)}" Type="1" KeyType="0" Entries="${idx.length}">\n${refs(idx, pad + "  ")}\n${pad}</NODE>`;
+  const phases = set.arc ? splitPhases(set) : [];
+  const nodes = [list("HarmonicFlow - Full Set", set.order.map((_, i) => i), "      ")];
+  if (phases.length) {
+    nodes.push(`      <NODE Type="0" Name="HarmonicFlow - Phases" Count="${phases.length}">\n${phases.map(g => list(g.name, g.idx, "        ")).join("\n")}\n      </NODE>`);
+  }
   return `<?xml version="1.0" encoding="UTF-8"?>
 <DJ_PLAYLISTS Version="1.0.0">
   <PRODUCT Name="HarmonicFlow" Version="1.0" Company=""/>
@@ -606,10 +710,8 @@ function buildXML(set) {
 ${rows}
   </COLLECTION>
   <PLAYLISTS>
-    <NODE Type="0" Name="ROOT" Count="1">
-      <NODE Name="${xmlEsc(set.name)}" Type="1" KeyType="0" Entries="${n}">
-${refs}
-      </NODE>
+    <NODE Type="0" Name="ROOT" Count="${nodes.length}">
+${nodes.join("\n")}
     </NODE>
   </PLAYLISTS>
 </DJ_PLAYLISTS>`;
@@ -662,6 +764,7 @@ function render(set, parsed) {
   $("stats").innerHTML = [
     ["Tracks", o.length],
     ["Runtime", fmtTime(runtime)],
+    ["Target", fmtTime(set.targetSec || runtime)],
     ["Harmonic mixes", `${harmonic}/${steps.length}`],
     ["Key clashes", clashes],
     ["Max BPM step", fmt(Math.round(biggest * 10) / 10)]
@@ -674,6 +777,9 @@ function render(set, parsed) {
   if (estimated) notes.push(`${estimated} of ${o.length} tracks use estimated BPM/key (marked ~).`);
   if (noLength) notes.push(`${noLength} tracks have no known length: ${fmtTime(DEFAULT_DURATION)} assumed in the XML export.`);
   if (parsed.dupes) notes.push(`Removed ${parsed.dupes} duplicate tracks.`);
+  if (set.targetSec && o.length === parsed.tracks.length && runtime < set.targetSec * .9) {
+    notes.push(`The selected lists only add up to ${fmtTime(runtime)} of the ${fmtTime(set.targetSec)} target. Add more lists to Track Pool.`);
+  }
   $("notice").textContent = notes.join(" ");
   $("notice").hidden = !notes.length;
 }
@@ -687,42 +793,130 @@ function readOpts() {
   return normOpts({ strictness: $("strictness").value, tempoFlex: $("tempo-flex").value });
 }
 
+function readArc() {
+  const id = ARCS[$("arc").value] ? $("arc").value : "classic";
+  const v = parseFloat($("peak-pos").value);
+  return { arc: id, peakPos: clamp(Number.isFinite(v) ? v : ARCS[id].peak, PEAK_MIN, PEAK_MAX) / 100 };
+}
+
+function durationSeconds() {
+  const v = parseInt($("set-len").value, 10);
+  return [3600, 7200, 10800, 14400].includes(v) ? v : 7200;
+}
+
+function drawArc() {
+  const { arc, peakPos } = readArc(), shape = arcShape(arc, peakPos);
+  const pts = Array.from({ length: 41 }, (_, i) => `${(i * 2.5).toFixed(1)},${(28 - (shape.target(i / 40) - 1) / 4 * 24).toFixed(1)}`);
+  const x = (peakPos * 100).toFixed(1);
+  $("arc-preview").innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="30" stroke="#2d2d2d" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="3 3"/>` +
+    `<polyline points="${pts.join(" ")}" fill="none" stroke="#00a8ff" stroke-width="1.6" vector-effect="non-scaling-stroke"/>`;
+}
+
 function syncSliders() {
-  const o = readOpts();
+  const o = readOpts(), a = readArc();
   $("strictness-val").textContent = `${o.strictness} / 3`;
   $("strictness-hint").textContent = STRICTNESS_HINTS[o.strictness];
   $("tempo-flex-val").textContent = `±${o.tempoFlex} BPM`;
+  $("peak-pos-val").textContent = `${Math.round(a.peakPos * 100)}%`;
+  $("arc-hint").textContent = ARCS[a.arc].hint;
+  drawArc();
+}
+
+// ---- Track pool: every list keeps its own raw lines; only ticked lists feed arrange() ----
+const sources = [{ id: "manual", name: "Custom list", checked: true, manual: true, text: "" }];
+const sourceText = src => src.manual ? $("tracks").value : src.text;
+
+function renderPool() {
+  $("pool").innerHTML = sources.map(src => {
+    const n = parseList(sourceText(src)).tracks.length;
+    return `<div class="pool-row"><label><input type="checkbox" data-id="${esc(src.id)}"${src.checked ? " checked" : ""}>` +
+      `<span class="pool-name">${esc(src.name)}</span><span class="mono">(${n})</span></label>` +
+      (src.manual ? "" : `<button class="pool-x" type="button" data-remove="${esc(src.id)}" aria-label="Remove ${esc(src.name)}">&times;</button>`) + `</div>`;
+  }).join("");
+  const total = parseList(sources.filter(x => x.checked).map(sourceText).join("\n")).tracks.length;
+  $("pool-total").textContent = `${total} tracks selected`;
+}
+
+function addSource(src) {
+  const i = sources.findIndex(x => x.id === src.id);
+  if (i > 0) sources[i] = src; else sources.push(src); // the same URL / the AI list replaces its old entry
+  renderPool();
+}
+
+function parsePool(onlyId) {
+  const chosen = onlyId ? sources.filter(x => x.id === onlyId) : sources.filter(x => x.checked);
+  return parseList(chosen.map(sourceText).join("\n"));
+}
+
+const sumSeconds = list => list.reduce((sum, t) => sum + trackSeconds(t), 0);
+
+// Picks as many tracks as fit the target length (the full pool when it is shorter) and arranges them along the arc.
+function arrangeForDuration(tracks, shape, targetSec, opts) {
+  const total = sumSeconds(tracks);
+  if (total <= targetSec) return arrange(tracks, shape, null, opts);
+  const avg = total / tracks.length;
+  const n = clamp(Math.round(targetSec / avg), 2, tracks.length);
+  let order = arrange(tracks, shape, n, opts);
+  const gap = targetSec - sumSeconds(order);
+  if (Math.abs(gap) > avg * .6) {
+    const n2 = clamp(n + Math.round(gap / avg), 2, tracks.length);
+    if (n2 !== n) {
+      const alt = arrange(tracks, shape, n2, opts);
+      if (Math.abs(targetSec - sumSeconds(alt)) < Math.abs(gap)) order = alt;
+    }
+  }
+  return order;
+}
+
+// For AI sets the AI's own order is kept; only the length is trimmed to the target.
+function takeByDuration(tracks, targetSec) {
+  const out = [];
+  let sum = 0;
+  for (const t of tracks) {
+    if (sum >= targetSec) break;
+    out.push(t);
+    sum += trackSeconds(t);
+  }
+  if (out.length > 2 && sum - targetSec > trackSeconds(out[out.length - 1]) / 2) out.pop();
+  return out;
 }
 
 function applyPreset(id) {
   const p = PRESETS[id];
   $("tracks").value = p.tracks;
+  sources[0].name = p.label;
   if (p.strictness) $("strictness").value = p.strictness;
   if (p.tempoFlex) $("tempo-flex").value = p.tempoFlex;
   syncSliders();
   updateCount();
+  renderPool();
 }
 
-function run(instant, { keepOrder = false } = {}) {
-  const parsed = parseList($("tracks").value);
+function run(instant, { keepOrder = false, onlySource = null } = {}) {
+  const parsed = parsePool(onlySource);
   const err = $("error");
   if (parsed.tracks.length < 2) {
-    err.textContent = "Paste at least two tracks or pick a preset.";
+    ++runId;
+    $("loader").hidden = true;
+    $("go").removeAttribute("aria-busy");
+    err.textContent = "Select at least two tracks: tick a list in Track Pool or paste a custom list.";
     err.hidden = false;
     return;
   }
   err.hidden = true;
-  const vibeId = document.querySelector('input[name="vibe"]:checked').value;
   const presetId = $("preset").value;
-  const limit = $("set-len").value === "all" ? null : parseInt($("set-len").value, 10);
+  const { arc, peakPos } = readArc();
+  const shape = arcShape(arc, peakPos);
+  const targetSec = durationSeconds();
   const opts = readOpts();
-  
+  const presetOnly = presetId && sources.every(x => x.manual || !x.checked);
+
   const finish = () => {
     try {
       current = {
-        name: keepOrder ? "AI Curated Set" : presetId ? PRESETS[presetId].label : "Harmonic Set",
-        vibe: VIBES[vibeId].label, vibeId, opts,
-        order: keepOrder ? parsed.tracks.slice(0, limit || parsed.tracks.length) : arrange(parsed.tracks, VIBES[vibeId], limit, opts)
+        name: keepOrder ? "AI Curated Set" : presetOnly ? PRESETS[presetId].label : "Harmonic Set",
+        vibe: `${shape.label} / peak ${Math.round(shape.peakPos * 100)}%`, vibeId: arc, arc, peakPos: shape.peakPos, targetSec, opts,
+        order: keepOrder ? takeByDuration(parsed.tracks, targetSec) : arrangeForDuration(parsed.tracks, shape, targetSec, opts)
       };
       render(current, parsed);
     } catch (e) {
@@ -743,7 +937,7 @@ function run(instant, { keepOrder = false } = {}) {
     `Analyzing ${n} tracks`,
     "Mapping Camelot Wheel coordinates",
     `Scoring ${n * (n - 1)} harmonic combinations`,
-    `Optimizing ${VIBES[vibeId].label} energy curve`
+    `Shaping the ${shape.label} energy curve`
   ];
   $("go").setAttribute("aria-busy", "true");
   $("loader").hidden = false;
@@ -783,6 +977,9 @@ async function checkBackend() {
   badge.classList.remove("online");
 }
 
+const trackLines = details => details.map(d =>
+  `${d.artist} - ${d.title}${d.duration_ms ? " | " + fmtTime(d.duration_ms / 1000) : ""}`);
+
 $("btn-fetch").addEventListener("click", async () => {
   const url = $("playlist-url").value.trim();
   const err = $("fetch-error");
@@ -802,38 +999,36 @@ $("btn-fetch").addEventListener("click", async () => {
       body: JSON.stringify({ url })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to fetch playlist.");
-    $("tracks").value = (data.details || []).length
-      ? data.details.map(d => `${d.artist} - ${d.title}${d.duration_ms ? " | " + fmtTime(d.duration_ms / 1000) : ""}`).join("\n")
-      : data.tracks.join("\n");
-    $("preset").value = "";
-    updateCount();
-    toast(`Imported ${data.count} tracks from playlist!`);
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Failed to fetch playlist.");
+    const text = (data.details || []).length ? trackLines(data.details).join("\n") : data.tracks.join("\n");
+    const name = data.name || "Imported list";
+    addSource({ id: "url:" + url, name, text, checked: true });
+    $("playlist-url").value = "";
+    toast(`Added "${name}" (${data.count} tracks) to Track Pool.`);
     run(false);
   } catch (e) {
-    err.textContent = e.message;
+    err.textContent = e && e.name === "TypeError" ? "Backend offline. Start it with: python app.py" : e.message;
     err.hidden = false;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Fetch Tracks";
+    btn.textContent = "Fetch";
   }
 });
 
 function applyAiSet(data) {
   const lines = data.tracks.map(t =>
     `${t.artist} - ${t.title} | ${t.bpm} | ${t.key} | E${t.energy}${t.duration ? " | " + fmtTime(t.duration) : ""}`);
-  $("tracks").value = lines.join("\n");
-  $("preset").value = "";
-  updateCount();
+  const prompt = $("ai-prompt").value.trim();
+  addSource({ id: "ai", name: `AI: ${prompt.slice(0, 28)}${prompt.length > 28 ? "..." : ""}`, text: lines.join("\n"), checked: true });
   aiTips.clear();
-  const parsed = parseList($("tracks").value);
+  const parsed = parseList(lines.join("\n"));
   if (data.tips && data.tips.length === parsed.tracks.length - 1) {
     data.tips.forEach((tip, i) => aiTips.set(pairKey(parsed.tracks[i], parsed.tracks[i + 1]), tip));
   }
   const status = $("ai-status");
   status.textContent = (data.source === "llm" ? "Curated by Claude." : "Local heuristic generator (no AI key set).") + (data.note ? " " + data.note : "");
   status.hidden = false;
-  run(false, { keepOrder: true });
+  run(false, { keepOrder: true, onlySource: "ai" });
   toast(`AI curated ${data.count} tracks.`);
 }
 
@@ -872,13 +1067,31 @@ $("preset").addEventListener("change", e => {
   applyPreset(e.target.value);
   run(false);
 });
-for (const id of ["strictness", "tempo-flex"]) {
+for (const id of ["strictness", "tempo-flex", "peak-pos"]) {
   $(id).addEventListener("input", syncSliders);
   $(id).addEventListener("change", () => { syncSliders(); run(false); });
 }
-$("tracks").addEventListener("input", () => { $("preset").value = ""; updateCount(); });
-document.querySelectorAll('input[name="vibe"]').forEach(r => r.addEventListener("change", () => run(false)));
+$("arc").addEventListener("change", () => {
+  $("peak-pos").value = ARCS[readArc().arc].peak; // every arc starts from its own natural peak position
+  syncSliders();
+  run(false);
+});
+$("tracks").addEventListener("input", () => { $("preset").value = ""; sources[0].name = "Custom list"; updateCount(); renderPool(); });
 $("set-len").addEventListener("change", () => run(false));
+$("pool").addEventListener("change", e => {
+  const src = sources.find(x => e.target && e.target.dataset && x.id === e.target.dataset.id);
+  if (!src) return;
+  src.checked = !!e.target.checked;
+  renderPool();
+  run(false);
+});
+$("pool").addEventListener("click", e => {
+  const i = sources.findIndex(x => e.target && e.target.dataset && x.id === e.target.dataset.remove);
+  if (i < 1) return; // the custom list can only be unticked
+  sources.splice(i, 1);
+  renderPool();
+  run(false);
+});
 
 $("dl-m3u").addEventListener("click", () => current && saveFile(`HarmonicFlow-${current.vibeId}.m3u`, buildM3U(current)));
 $("dl-xml").addEventListener("click", () => current && saveFile(`HarmonicFlow-${current.vibeId}.xml`, buildXML(current)));
