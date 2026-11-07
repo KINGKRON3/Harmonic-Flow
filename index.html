@@ -3,356 +3,147 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>HarmonicFlow</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<style>`n[hidden] { display: none !important; }`n[hidden] { display: none !important; }
+<style>
 :root {
   color-scheme: dark;
-  --bg: #07080f;
-  --panel: #0e1019;
-  --panel-2: #161927;
-  --line: #272c42;
-  --fg: #eff1ff;
-  --muted: #a0a8c8;
-  --cyan: #22e6ff;
-  --purple: #b07bff;
-  --warn: #ffbd59;
-  --bad: #ff6b86;
-  --ink: #06070d;
-  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
-  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
-  --font-data: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --bg: #121212;
+  --panel: #1a1a1a;
+  --panel-2: #202020;
+  --line: #2d2d2d;
+  --fg: #e8e8e8;
+  --muted: #8c8c8c;
+  --accent: #00a8ff;
+  --accent-dim: rgba(0, 168, 255, .14);
+  --warn: #e0a030;
+  --bad: #e5534b;
+  --ok: #5cb85c;
+  --font-ui: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { background: var(--bg); }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 400 15px/1.45 var(--font-body);
-}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 13px/1.45 var(--font-ui); }
 button, select, textarea, input { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 
-.shell {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding-block: 18px 40px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  display: grid;
-  gap: 16px;
-}
+.shell { max-width: 1480px; margin: 0 auto; padding: 12px max(12px, env(safe-area-inset-right, 0px)) 32px max(12px, env(safe-area-inset-left, 0px)); display: grid; gap: 12px; }
 
-.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.logo { width: 42px; height: 42px; flex: none; filter: drop-shadow(0 0 8px rgba(34, 230, 255, .45)); }
-.brand { min-width: 0; flex: 1 1 220px; }
-.brand h1 { margin: 0; font: 700 26px/1.1 var(--font-display); letter-spacing: .01em; }
-.brand h1 span { color: var(--cyan); text-shadow: 0 0 14px rgba(34, 230, 255, .55); }
-.brand p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
-.tag {
-  font: 600 12px/1 var(--font-data);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--purple);
-  border: 1px solid var(--purple);
-  border-radius: 3px;
-  padding: 7px 10px;
-  box-shadow: 0 0 12px rgba(176, 123, 255, .25);
-}
+.top { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
+.logo { width: 24px; height: 24px; flex: none; }
+.brand { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.brand h1 { margin: 0; font: 600 16px/1.2 var(--font-ui); letter-spacing: .02em; }
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 0; color: var(--muted); font-size: 12px; }
+.status-badge { font: 500 11px/1 var(--font-mono); padding: 5px 8px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); white-space: nowrap; }
+.status-badge.online { color: var(--accent); border-color: var(--accent); }
 
-.deck {
-  display: grid;
-  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  grid-template-areas: "input set" "wheel set";
-  gap: 16px;
-}
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; min-width: 0; }
-.panel-head {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel-2);
-  font: 600 12px/1.3 var(--font-data);
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
+.layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .panel-head b { color: var(--fg); font-weight: 600; }
-.input-panel { grid-area: input; }
-.wheel-panel { grid-area: wheel; align-self: start; }
-.set-panel { grid-area: set; position: relative; }
+.panel-head span { font: 400 11px var(--font-mono); text-transform: none; letter-spacing: 0; }
 
-form { display: grid; gap: 14px; padding: 14px 12px; }
-.field { display: grid; gap: 6px; min-width: 0; border: 0; margin: 0; padding: 0; }
-.field-header { display: flex; justify-content: space-between; align-items: center; }
-.field > label, .field > legend, .field-header label {
-  padding: 0;
-  font: 600 12px/1.3 var(--font-data);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.field > legend { margin-bottom: 6px; }
-select, textarea, input[type="text"], input[type="url"] {
-  width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 9px 10px;
-}
-select:hover, textarea:hover, input:hover { border-color: #3d4466; }
-textarea {
-  min-height: 180px;
-  resize: vertical;
-  font: 400 12.5px/1.6 var(--font-data);
-  white-space: pre;
-  overflow-x: auto;
-}
-.hint { margin: 0; color: var(--muted); font-size: 13px; }
-.hint code { font: 500 12px var(--font-data); color: var(--fg); overflow-wrap: anywhere; }
+form { display: grid; gap: 14px; padding: 12px; }
+.field { display: grid; gap: 5px; min-width: 0; border: 0; margin: 0; padding: 0; }
+.field-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+label, legend { font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 0; }
+select, textarea, input[type="url"] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; padding: 7px 8px; color: var(--fg); min-width: 0; }
+select:hover, textarea:hover, input[type="url"]:hover { border-color: #3d3d3d; }
+textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
+#tracks { min-height: 150px; }
+#ai-prompt { min-height: 66px; font-family: var(--font-ui); font-size: 13px; }
+.hint { margin: 0; color: var(--muted); font-size: 11px; }
+.hint code { font-family: var(--font-mono); color: var(--fg); }
+.error { margin: 0; color: var(--bad); font-size: 12px; }
+.url-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 
-.url-row { display: flex; gap: 8px; }
-.url-row input { flex: 1; }
-.btn-fetch {
-  border: 1px solid var(--cyan);
-  background: rgba(34, 230, 255, 0.1);
-  color: var(--cyan);
-  border-radius: 3px;
-  padding: 8px 14px;
-  font: 600 13px var(--font-data);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.btn-fetch:hover { background: rgba(34, 230, 255, 0.2); }
-.status-badge {
-  font: 600 11px var(--font-data);
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid var(--warn);
-  color: var(--warn);
-  text-transform: uppercase;
-}
-.status-badge.online { border-color: var(--cyan); color: var(--cyan); }
+.btn, .btn-fetch, .go { border: 1px solid var(--line); background: var(--panel-2); border-radius: 2px; padding: 7px 12px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover, .btn-fetch:hover { border-color: var(--accent); }
+.btn:disabled, .btn-fetch:disabled { opacity: .5; cursor: default; }
+.btn.primary, .go { background: var(--accent); border-color: var(--accent); color: #00131f; font-weight: 600; }
+.btn.primary:hover, .go:hover { filter: brightness(1.1); }
+.go { padding: 10px 12px; }
+.go[aria-busy="true"] { opacity: .6; }
 
-.vibes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 3px; }
-.vibes label { position: relative; cursor: pointer; }
-.vibes label + label { border-left: 1px solid var(--line); }
-.vibes input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-.vibes span {
-  display: flex; align-items: center; justify-content: center; text-align: center;
-  height: 100%; min-height: 46px; padding: 6px;
-  font-weight: 600; font-size: 13.5px; line-height: 1.2;
-  color: var(--muted);
-}
-.vibes label:hover span { color: var(--fg); }
-.vibes input:checked + span { background: rgba(34, 230, 255, .12); color: var(--cyan); box-shadow: inset 0 -2px 0 var(--cyan); }
-
-.go {
-  border: 0; border-radius: 3px; cursor: pointer;
-  padding: 14px 12px;
-  background: linear-gradient(95deg, var(--cyan), var(--purple));
-  color: var(--ink);
-  font: 700 15.5px/1.2 var(--font-display);
-  box-shadow: 0 0 22px rgba(34, 230, 255, .3), 0 0 34px rgba(176, 123, 255, .22);
-  transition: box-shadow .15s, transform .15s;
-}
-.go:hover { box-shadow: 0 0 28px rgba(34, 230, 255, .55), 0 0 44px rgba(176, 123, 255, .4); }
-.go:active { transform: translateY(1px); }
-.error { margin: 0; color: var(--bad); font-weight: 500; font-size: 13.5px; }
-
-.wheel-wrap { padding: 12px; display: grid; gap: 8px; }
-#wheel { width: 100%; max-width: 300px; margin: 0 auto; display: block; }
-#wheel text { font: 600 10px var(--font-data); text-anchor: middle; dominant-baseline: central; }
-
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
-.stat { padding: 10px 12px; min-width: 0; }
-.stat + .stat { border-left: 1px solid var(--line); }
-.stat dt { font: 500 11px/1.3 var(--font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.stat dd { margin: 3px 0 0; font: 600 21px/1.15 var(--font-data); font-variant-numeric: tabular-nums; }
-dl { margin: 0; }
-
-.flow { padding: 12px 12px 8px; border-bottom: 1px solid var(--line); }
-.plot { position: relative; height: 120px; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0 23px, rgba(160, 168, 200, .08) 23px 24px); }
-.bars { position: absolute; inset: 0; display: grid; align-items: end; }
-.bars div { height: 100%; padding: 0 2px; display: flex; align-items: flex-end; }
-.bars i { display: block; width: 100%; border-radius: 2px 2px 0 0; background: var(--k); opacity: .82; }
-.plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.plot polyline { fill: none; vector-effect: non-scaling-stroke; }
-.bpm-line { stroke: var(--fg); stroke-width: 2; }
-.target-line { stroke: var(--purple); stroke-width: 1.5; stroke-dasharray: 5 4; }
-.flow-axis { display: grid; margin-top: 4px; font: 500 11px var(--font-data); color: var(--muted); text-align: center; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 13px; color: var(--muted); }
-.legend b { color: var(--fg); font: 500 12.5px var(--font-data); }
-.legend i { display: inline-block; width: 18px; vertical-align: middle; margin-right: 5px; border-top: 2px solid var(--fg); }
-.legend i.dash { border-top: 2px dashed var(--purple); }
-
-.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
-.btn {
-  background: var(--bg);
-  border: 1px solid var(--cyan);
-  color: var(--cyan);
-  border-radius: 3px;
-  padding: 8px 12px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-}
-.btn:hover { background: rgba(34, 230, 255, .14); }
-.btn.alt { border-color: var(--purple); color: var(--purple); }
-.btn.alt:hover { background: rgba(176, 123, 255, .16); }
-.actions p { flex: 1 1 100%; margin: 0; color: var(--muted); font-size: 13px; }
-
-.notice { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--warn); font-size: 14px; }
-.notice code { font: 500 12.5px var(--font-data); overflow-wrap: anywhere; }
-
-.export-view { padding: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
-.export-view textarea { min-height: 170px; }
-.export-view div { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-
-.timeline { list-style: none; margin: 0; padding: 14px 12px 16px; position: relative; display: grid; }
-.timeline::before {
-  content: ""; position: absolute; top: 30px; bottom: 34px; left: 31px; width: 2px;
-  background: linear-gradient(var(--cyan), var(--purple));
-  box-shadow: 0 0 8px rgba(34, 230, 255, .5);
-}
-.track {
-  position: relative;
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-}
-.num {
-  width: 40px; height: 40px;
-  display: grid; place-items: center;
-  background: var(--bg);
-  border: 1px solid var(--cyan);
-  border-radius: 3px;
-  font: 600 15px var(--font-data);
-  color: var(--cyan);
-  font-variant-numeric: tabular-nums;
-}
-.card {
-  grid-column: 2 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 14px;
-  align-items: center;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 9px 12px;
-}
-.card:hover { border-color: #434a70; }
-.name { font-weight: 600; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
-.artist { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
-.readout { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.bpm, .key {
-  display: inline-flex; align-items: center; justify-content: center;
-  height: 28px; padding: 0 8px;
-  border-radius: 3px;
-  font: 600 13.5px var(--font-data);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.bpm { border: 1px solid var(--cyan); color: var(--cyan); min-width: 84px; }
-.key { background: var(--k); color: var(--ink); min-width: 46px; }
-.est.bpm { border-style: dashed; }
-.est.key { outline: 1px dashed var(--fg); outline-offset: 1px; }
-.energy { display: inline-flex; align-items: flex-end; gap: 2px; height: 26px; width: 34px; }
-.energy i { flex: 1; background: var(--line); border-radius: 1px; }
-.energy i:nth-child(1) { height: 28%; } .energy i:nth-child(2) { height: 46%; } .energy i:nth-child(3) { height: 64%; }
-.energy i:nth-child(4) { height: 82%; } .energy i:nth-child(5) { height: 100%; }
-.energy i.on { background: linear-gradient(var(--purple), var(--cyan)); box-shadow: 0 0 5px rgba(34, 230, 255, .5); }
-.energy.est { opacity: .7; }
-
-.trans { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 8px 52px; }
-.note {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 3px;
-  border: 1px solid currentColor;
-  font: 500 12.5px/1.35 var(--font-data);
-}
-.note.perfect { color: var(--cyan); background: rgba(34, 230, 255, .08); }
-.note.smooth { color: var(--purple); background: rgba(176, 123, 255, .09); }
-.note.creative, .note.push { color: var(--warn); background: rgba(255, 189, 89, .08); }
-.note.clash { color: var(--bad); background: rgba(255, 107, 134, .09); }
-.note.tempo { color: var(--muted); border-color: var(--line); }
-
-.sliders { display: grid; gap: 14px; }
+.sliders { gap: 12px; }
 .slider-row { display: grid; gap: 4px; }
-.slider-row input[type="range"] { width: 100%; accent-color: var(--cyan); }
-.slider-row output { font: 500 13px var(--font-data); color: var(--cyan); }
-[hidden], .loader[hidden] { display: none !important; }
-.loader {
-  position: absolute; inset: 0; z-index: 2;
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 70px 16px 16px;
-  background: rgba(7, 8, 15, .9);
-}
-.loader-box { width: min(340px, 100%); display: grid; gap: 12px; text-align: center; }
-.eq { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 54px; }
-.eq i { width: 8px; height: 100%; transform-origin: bottom; background: linear-gradient(var(--purple), var(--cyan)); animation: eq .7s ease-in-out infinite alternate; }
-.eq i:nth-child(2n) { animation-delay: -.3s; } .eq i:nth-child(3n) { animation-delay: -.55s; } .eq i:nth-child(5n) { animation-delay: -.15s; }
-@keyframes eq { from { transform: scaleY(.18); } to { transform: scaleY(1); } }
-#stage { font: 500 14px var(--font-data); color: var(--fg); min-height: 21px; }
-.meter { height: 4px; background: var(--line); }
-.meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--purple)); transition: width .3s linear; }
+.slider-row input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
+.slider-row output { font: 500 12px var(--font-mono); color: var(--accent); }
+.vibes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.vibes label { text-transform: none; letter-spacing: 0; font: 500 12px var(--font-ui); color: var(--fg); position: relative; cursor: pointer; }
+.vibes input { position: absolute; opacity: 0; inset: 0; }
+.vibes span { display: block; text-align: center; padding: 7px 4px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); color: var(--muted); }
+.vibes input:checked + span { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.vibes input:focus-visible + span { outline: 1px solid var(--accent); outline-offset: 1px; }
 
-.toast {
-  position: fixed; z-index: 5;
-  left: 50%; transform: translateX(-50%);
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  max-width: calc(100vw - 32px);
-  padding: 9px 14px;
-  background: var(--panel-2);
-  border: 1px solid var(--cyan);
-  border-radius: 3px;
-  box-shadow: 0 0 18px rgba(34, 230, 255, .3);
-}
+.set-panel { position: relative; min-height: 360px; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.stat { display: flex; gap: 6px; align-items: baseline; }
+.stat dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.stat dd { margin: 0; font: 500 12px var(--font-mono); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); align-items: center; }
+.actions p { margin: 0 0 0 auto; color: var(--muted); font-size: 11px; }
+.notice { margin: 0; padding: 7px 12px; color: var(--warn); font-size: 12px; border-bottom: 1px solid var(--line); }
+.export-view { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.export-view textarea { min-height: 160px; }
 
-@media (max-width: 920px) {
-  .deck { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "input" "set" "wheel"; }
-}
-@media (max-width: 620px) {
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stat:nth-child(3) { border-left: 0; }
-  .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
-  .card { grid-template-columns: minmax(0, 1fr); }
-  .track { grid-template-columns: 34px minmax(0, 1fr); gap: 8px; align-items: start; }
-  .num { width: 34px; height: 34px; font-size: 13.5px; }
-  .card { grid-column: 2; }
-  .timeline::before { left: 28px; }
-  .trans { padding-left: 42px; }
-  .btn { flex: 1 1 100%; }
+.table-wrap { overflow-x: auto; }
+.grid { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12.5px; }
+.grid th { text-align: left; padding: 7px 10px; font: 600 10.5px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; white-space: nowrap; }
+.grid td { padding: 7px 10px; border-bottom: 1px solid #232323; vertical-align: top; }
+.grid tbody tr:hover { background: var(--panel-2); }
+.grid .c-num { width: 40px; color: var(--muted); }
+.grid .c-key { width: 62px; }
+.grid .c-bpm { width: 70px; text-align: right; }
+.grid th.c-bpm { text-align: right; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.name { font-weight: 500; }
+.artist { color: #b4b4b4; }
+.est { color: var(--muted); }
+.kbadge { display: inline-block; min-width: 38px; text-align: center; padding: 2px 6px; border: 1px solid var(--k); border-radius: 2px; color: var(--k); font: 600 11.5px var(--font-mono); background: rgba(255, 255, 255, .02); }
+.kbadge.est { border-style: dashed; }
+.tr { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.tr::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.tr.perfect, .tr.smooth { color: var(--accent); }
+.tr.creative { color: var(--warn); }
+.tr.clash { color: var(--bad); }
+.tr.none { color: var(--muted); }
+.tr.none::before { display: none; }
+.hint-cell { color: #c4c4c4; max-width: 420px; }
+.hint-cell .delta { display: block; margin-top: 2px; color: var(--muted); font: 400 11px var(--font-mono); }
+.hint-cell .ai { font: 600 9.5px var(--font-mono); letter-spacing: .06em; color: var(--accent); border: 1px solid var(--accent); border-radius: 2px; padding: 0 4px; margin-right: 6px; vertical-align: 1px; }
+
+.loader { position: absolute; inset: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: center; padding: 90px 16px 16px; background: rgba(18, 18, 18, .92); }
+.loader-box { width: min(320px, 100%); display: grid; gap: 10px; text-align: center; }
+#stage { font: 500 12px var(--font-mono); color: var(--fg); min-height: 18px; }
+.meter { height: 2px; background: var(--line); }
+.meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s linear; }
+
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--accent); padding: 8px 14px; border-radius: 2px; font-size: 12px; z-index: 5; max-width: calc(100vw - 24px); }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .actions p { margin-left: 0; width: 100%; }
 }
 </style>
 </head>
 <body>
-
 <div class="shell">
   <header class="top">
-    <svg class="logo" viewBox="0 0 42 42" aria-hidden="true">
-      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22e6ff"/><stop offset="1" stop-color="#b07bff"/></linearGradient></defs>
-      <circle cx="21" cy="21" r="18" fill="none" stroke="url(#lg)" stroke-width="3" stroke-dasharray="8.4 1"/>
-      <circle cx="21" cy="21" r="10.5" fill="none" stroke="url(#lg)" stroke-width="3" stroke-dasharray="4.5 1"/>
-      <circle cx="21" cy="21" r="3" fill="#22e6ff"/>
-    </svg>
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="#00a8ff" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="#00a8ff"/></svg>
     <div class="brand">
       <h1>Harmonic<span>Flow</span></h1>
-      <p>AI-Powered Harmonic Setlist Builder</p>
+      <p>AI-assisted harmonic set builder for Rekordbox</p>
     </div>
-    <span class="tag">Create Track</span>
+    <span class="status-badge" id="backend-status">Checking backend...</span>
   </header>
 
-  <main class="deck">
+  <main class="layout">
     <section class="panel input-panel" aria-label="Track input">
-      <div class="panel-head"><b>Tracks</b><span id="count">0 lines</span></div>
+      <div class="panel-head"><b>Source</b><span id="count">0 lines</span></div>
       <form id="form" novalidate>
         <div class="field">
           <label for="preset">Preset</label>
@@ -367,29 +158,34 @@ dl { margin: 0; }
         </div>
 
         <div class="field">
-          <div class="field-header">
-            <label for="playlist-url">Paste Playlist URL</label>
-            <span class="status-badge" id="backend-status">Checking backend...</span>
-          </div>
+          <label for="playlist-url">Playlist URL</label>
           <div class="url-row">
-            <input type="url" id="playlist-url" placeholder="YouTube, SoundCloud, or Spotify URL">
-            <button class="btn-fetch" id="btn-fetch" type="button">Fetch Tracks</button>
+            <input type="url" id="playlist-url" placeholder="YouTube, SoundCloud or Spotify playlist" autocomplete="off">
+            <button class="btn-fetch" id="btn-fetch" type="button">Fetch</button>
           </div>
           <p class="error" id="fetch-error" hidden></p>
         </div>
 
         <div class="field">
+          <label for="ai-prompt">AI Vibe Prompt</label>
+          <textarea id="ai-prompt" maxlength="500" spellcheck="false" placeholder="Dark peak-time techno set that starts at 130 BPM and ends at 140 BPM with heavy drops"></textarea>
+          <button class="btn primary" id="btn-ai" type="button">AI Curate Set</button>
+          <p class="error" id="ai-error" hidden></p>
+          <p class="hint" id="ai-status" hidden></p>
+        </div>
+
+        <div class="field">
           <div class="field-header">
             <label for="tracks">Track list</label>
-            <label for="set-len">Target Duration</label>
+            <label for="set-len">Length</label>
           </div>
-          <select id="set-len" style="margin-bottom: 6px;">
+          <select id="set-len">
             <option value="all">Use all tracks</option>
             <option value="18">1 Hour (~18 tracks)</option>
             <option value="35" selected>2 Hours (~35 tracks)</option>
           </select>
-          <textarea id="tracks" spellcheck="false" wrap="off" placeholder="Artist - Title | 128 | 8A | E4"></textarea>
-          <p class="hint">One track per line. Format: <code>Artist - Title | BPM | Key | E1-E5</code>. Missing data is estimated with ~.</p>
+          <textarea id="tracks" spellcheck="false" wrap="off" placeholder="Artist - Title | 128 | 8A | E4 | 5:30"></textarea>
+          <p class="hint">One track per line: <code>Artist - Title | BPM | Key | E1-E5 | m:ss</code>. Missing data is estimated (~).</p>
         </div>
 
         <div class="field sliders">
@@ -412,53 +208,49 @@ dl { margin: 0; }
         </div>
 
         <fieldset class="field">
-          <legend>Target set vibe</legend>
+          <legend>Set vibe</legend>
           <div class="vibes">
-            <label><input type="radio" name="vibe" id="vibe-build" value="build"><span>Gradual Build</span></label>
-            <label><input type="radio" name="vibe" id="vibe-peak" value="peak" checked><span>Peak Time Banger</span></label>
-            <label><input type="radio" name="vibe" id="vibe-chill" value="chill"><span>Chill/Warm-up</span></label>
+            <label><input type="radio" name="vibe" id="vibe-build" value="build"><span>Build</span></label>
+            <label><input type="radio" name="vibe" id="vibe-peak" value="peak" checked><span>Peak</span></label>
+            <label><input type="radio" name="vibe" id="vibe-chill" value="chill"><span>Warm-up</span></label>
           </div>
         </fieldset>
 
         <p class="error" id="error" role="alert" hidden></p>
-        <button class="go" id="go" type="submit">Generate Harmonically Matched Set</button>
+        <button class="go" id="go" type="submit">Generate Harmonic Set</button>
       </form>
     </section>
 
     <section class="panel set-panel" aria-label="Generated set">
       <div class="panel-head"><b id="set-title">Set</b><span id="set-vibe"></span></div>
       <dl class="stats" id="stats"></dl>
-      <div class="flow">
-        <div class="plot" id="plot"></div>
-        <div class="flow-axis" id="axis"></div>
-        <div class="legend" id="legend"></div>
-      </div>
       <div class="actions">
-        <button class="btn" id="dl-m3u" type="button">Download M3U Playlist</button>
-        <button class="btn alt" id="dl-xml" type="button">Download Rekordbox XML (8 Hot Cues)</button>
-        <button class="btn" id="copy" type="button">Copy to Clipboard</button>
-        <p>XML exports carry 8 auto-generated Hot Cues (A-H) and Camelot keys for Pioneer Rekordbox.</p>
+        <button class="btn primary" id="dl-xml" type="button">Rekordbox XML (8 Hot Cues)</button>
+        <button class="btn" id="dl-m3u" type="button">M3U Playlist</button>
+        <button class="btn" id="copy" type="button">Copy Tracklist</button>
+        <p>Hot cues A-H stay inside each track's real length.</p>
       </div>
       <div class="export-view" id="export-view" hidden>
         <div><strong id="export-name"></strong><button class="btn" id="export-close" type="button">Close</button></div>
         <textarea id="export-text" readonly wrap="off"></textarea>
       </div>
       <p class="notice" id="notice" hidden></p>
-      <ol class="timeline" id="timeline"></ol>
+      <div class="table-wrap">
+        <table class="grid" aria-label="Generated set">
+          <thead>
+            <tr>
+              <th class="c-num">#</th><th class="c-key">Key</th><th class="c-bpm">BPM</th>
+              <th>Title</th><th>Artist</th><th>Transition</th><th>AI Mix Hint</th>
+            </tr>
+          </thead>
+          <tbody id="timeline"></tbody>
+        </table>
+      </div>
       <div class="loader" id="loader" hidden>
         <div class="loader-box" role="status">
-          <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
           <div id="stage"></div>
           <div class="meter"><i id="meter"></i></div>
         </div>
-      </div>
-    </section>
-
-    <section class="panel wheel-panel" aria-label="Camelot wheel">
-      <div class="panel-head"><b>Key path</b><span id="wheel-count"></span></div>
-      <div class="wheel-wrap">
-        <svg id="wheel" viewBox="0 0 300 300" role="img" aria-label="Camelot wheel showing keys"></svg>
-        <p class="hint">Harmonic path on Camelot wheel. Outer circle is Major (B), inner circle is Minor (A).</p>
       </div>
     </section>
   </main>
@@ -550,7 +342,7 @@ MAJOR.forEach((k, i) => KEY_ALIASES[k] = (i + 1) + "B");
 const camelot = s => { const m = /^(1[0-2]|[1-9])([AB])$/.exec(s); return m ? { n: +m[1], m: m[2] } : null; };
 const keyName = k => k.n + k.m;
 const musicalKey = k => (k.m === "A" ? MINOR : MAJOR)[k.n - 1];
-const keyColor = k => `hsl(${(k.n * 30 + 140) % 360} ${k.m === "A" ? "78% 60%" : "92% 78%"})`;
+const keyColor = k => `hsl(${(k.n * 30 + 140) % 360} ${k.m === "A" ? "50% 62%" : "62% 72%"})`;
 
 function parseKey(tok) {
   const t = tok.trim();
@@ -594,6 +386,8 @@ function splitName(raw) {
   return { artist: "Unknown artist", title: s };
 }
 
+const DEFAULT_DURATION = 360; // seconds, used (and marked ~) when a track has no known length
+
 function parseList(text) {
   const out = [], seen = new Set();
   let dupes = 0;
@@ -601,19 +395,21 @@ function parseList(text) {
     if (!line.trim() || /^\s*(https?:\/\/|spotify:)/i.test(line)) continue;
     const parts = line.split(/\s*[|\t]\s*/);
     let name = parts.shift();
-    let bpm = null, key = null, energy = null;
+    let bpm = null, key = null, energy = null, duration = null;
     for (const raw of parts) {
       const tok = raw.trim();
       let m;
       if ((m = /^e(?:nergy)?\s*[:=]?\s*([1-5])$/i.exec(tok))) energy = +m[1];
+      else if ((m = /^(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)$/.exec(tok))) duration = (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]);
       else if ((m = /^(\d{2,3}(?:\.\d+)?)\s*(?:bpm)?$/i.exec(tok)) && +m[1] >= 60 && +m[1] <= 220) bpm = +m[1];
       else if (parseKey(tok)) key = parseKey(tok);
     }
+    if (duration !== null && duration < 30) duration = null;
     const t = splitName(name);
     const id = (t.artist + "|" + t.title).toLowerCase();
     if (seen.has(id)) { dupes++; continue; }
     seen.add(id);
-    out.push({ ...t, bpm, key, energy, est: { bpm: bpm === null, key: key === null, energy: energy === null } });
+    out.push({ ...t, bpm, key, energy, duration, est: { bpm: bpm === null, key: key === null, energy: energy === null, duration: duration === null } });
   }
   const known = out.filter(t => t.bpm !== null).map(t => t.bpm).sort((a, b) => a - b);
   const mid = known.length ? known[known.length >> 1] : 126;
@@ -622,6 +418,7 @@ function parseList(text) {
     if (t.est.bpm) t.bpm = mid - 4 + (h % 9);
     if (t.est.key) t.key = { n: ((h >>> 4) % 12) + 1, m: (h >>> 9) % 3 === 0 ? "B" : "A" };
     if (t.est.energy) t.energy = ((h >>> 12) % 5) + 1;
+    if (t.est.duration) t.duration = DEFAULT_DURATION;
   }
   return { tracks: out, dupes };
 }
@@ -705,17 +502,42 @@ function arrange(tracks, vibe, limitCount, opts) {
 const fmt = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
 const signed = v => (v > 0 ? "+" : v < 0 ? "-" : "") + fmt(Math.abs(Math.round(v * 10) / 10));
 
+// Local mixing-hint generator: always available, no network needed.
+function mixTip(a, b) {
+  const d = (b.key.n - a.key.n + 12) % 12, same = a.key.m === b.key.m, jump = b.bpm - a.bpm;
+  let tip;
+  if (same && d === 0) tip = "Perfect match: long 32-bar blend, swap the bass on the phrase change.";
+  else if (same && d === 1) tip = "Key lift: 16-bar blend, ease the outgoing low EQ at bar 16 and let the new melody lead.";
+  else if (same && d === 11) tip = "Key drop: keep the blend short (8 bars) and filter the outgoing highs.";
+  else if (!same && d === 0) tip = "Relative key switch: blend mids only for 16 bars, keep the lows split.";
+  else if (same && d === 2) tip = "+2 Boost: Cut low EQ on bar 32, echo out previous track.";
+  else if (same && d === 7) tip = "+7 Energy Boost: Filter sweep the outgoing track, drop the new one on the downbeat.";
+  else if (same && d === 10) tip = "-2 Step down: Fade the outgoing bass early, echo out on the last bar.";
+  else if (same && d === 5) tip = "-7 Energy Drop: Reverb tail on the outgoing track, bring the new one in on the breakdown.";
+  else if (!same && (d === 1 || d === 11)) tip = "Mood shift: bridge with a drum loop or FX for 8 bars, never blend two melodies.";
+  else tip = "Key clash: hard cut on the breakdown or echo out, skip long blends.";
+  if (Math.abs(jump) >= 3) tip += ` Ride the pitch ${jump > 0 ? "up" : "down"} ${fmt(Math.abs(jump))} BPM over the blend.`;
+  return tip;
+}
+
+const aiTips = new Map(); // "Artist - Title >> Artist - Title" -> hint written by the AI backend
+const pairKey = (a, b) => `${a.artist} - ${a.title} >> ${b.artist} - ${b.title}`;
+const tipFor = (a, b) => aiTips.has(pairKey(a, b)) ? { text: aiTips.get(pairKey(a, b)), ai: true } : { text: mixTip(a, b), ai: false };
+
 function transition(a, b) {
   const rel = relation(a.key, b.key);
   const d = b.bpm - a.bpm, e = b.energy - a.energy, pct = d / a.bpm * 100;
   return {
-    tier: rel.tier, text: rel.text,
+    tier: rel.tier, text: rel.text, label: rel.text.replace(/\s\S+\s\u2192\s\S+.*$/, ""),
     tempo: `${signed(d)} BPM / ${e ? `Energy shift ${signed(e)}` : "Energy hold"}`,
     push: Math.abs(pct) > 5 ? `Tempo shift ${signed(pct)}%` : null
   };
 }
 
-const xmlEsc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// Strips characters that are illegal in XML 1.0, then escapes the five predefined entities.
+const xmlEsc = s => String(s)
+  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 const lineName = t => `${t.artist} - ${t.title}`;
 const safeFile = s => s.replace(/[\\/:*?"<>|]/g, "_");
 
@@ -736,21 +558,41 @@ const HOT_CUES = [
   { name: "Loop Outro", bar: 224, r: 255, g: 255, b: 255 }
 ];
 
-function hotCues(bpm) {
+const CUE_TAIL = 2; // seconds that must stay free after the last hot cue
+
+// Squeezes the cue layout into `maxBar` bars, snapping to 4-bar phrases (then single bars) when they stay distinct.
+function fitBars(bars, maxBar) {
+  const f = maxBar / bars[bars.length - 1];
+  for (const grid of [4, 1]) {
+    const out = bars.map(b => Math.floor(b * f / grid) * grid);
+    if (out.every((b, i) => !i || b > out[i - 1])) return out;
+  }
+  return bars.map((_, i) => maxBar * i / (bars.length - 1)); // very short track: even spacing
+}
+
+function hotCues(bpm, duration) {
   const tempo = Number.isFinite(bpm) && bpm > 0 ? bpm : 128;
   const barSec = (4 * 60) / tempo;
-  // Rekordbox expects Start in seconds with millisecond precision.
-  return HOT_CUES.map((c, num) => ({ ...c, num, s: (c.bar * barSec).toFixed(3) }));
+  let bars = HOT_CUES.map(c => c.bar);
+  if (Number.isFinite(duration) && duration > 0) {
+    const latest = Math.max(duration - CUE_TAIL, 0) / barSec; // last bar position that still fits
+    if (bars[bars.length - 1] > latest) bars = fitBars(bars, latest);
+  }
+  // Rekordbox expects Start in seconds with millisecond precision (floored, so never past the limit).
+  return HOT_CUES.map((c, num) => ({ ...c, num, s: (Math.floor(bars[num] * barSec * 1000) / 1000).toFixed(3) }));
 }
+
+const trackSeconds = t => Number.isFinite(t.duration) && t.duration > 0 ? t.duration : DEFAULT_DURATION;
 
 function buildXML(set) {
   const n = set.order.length;
   const rows = set.order.map((t, i) => {
-    const marksXml = hotCues(t.bpm).map(c => `      <POSITION_MARK Name="${xmlEsc(c.name)}" Type="0" Start="${c.s}" Num="${c.num}" Red="${c.r}" Green="${c.g}" Blue="${c.b}"/>`).join("\n");
+    const dur = trackSeconds(t);
+    const marksXml = hotCues(t.bpm, dur).map(c => `      <POSITION_MARK Name="${xmlEsc(c.name)}" Type="0" Start="${c.s}" Num="${c.num}" Red="${c.r}" Green="${c.g}" Blue="${c.b}"/>`).join("\n");
     const attrs = [
       `TrackID="${i + 1}"`, `Name="${xmlEsc(t.title)}"`, `Artist="${xmlEsc(t.artist)}"`,
-      `Kind="MP3 File"`, `TotalTime="0"`, `AverageBpm="${t.bpm.toFixed(2)}"`, `Tonality="${xmlEsc(musicalKey(t.key))}"`,
-      `Comments="${xmlEsc(`#${i + 1} Camelot ${keyName(t.key)}`)}"`,
+      `Kind="MP3 File"`, `TotalTime="${Math.round(dur)}"`, `AverageBpm="${t.bpm.toFixed(2)}"`, `Tonality="${xmlEsc(musicalKey(t.key))}"`,
+      `Comments="${xmlEsc(`#${i + 1} Camelot ${keyName(t.key)}` + (i ? ` | Mix: ${tipFor(set.order[i - 1], t).text}` : ""))}"`,
       `Location="file://localhost/HarmonicFlow/${encodeURIComponent(safeFile(lineName(t)) + ".mp3")}"`
     ];
     return `    <TRACK ${attrs.join(" ")}>\n${marksXml}\n    </TRACK>`;
@@ -776,7 +618,7 @@ ${refs}
 function buildText(set) {
   return `${set.name} (${set.vibe})\n` + set.order.map((t, i) => {
     const row = `${String(i + 1).padStart(2, "0")}. ${lineName(t)} [${fmt(t.bpm)} BPM, ${keyName(t.key)}, Energy ${t.energy}/5]`;
-    return i ? `    > ${transition(set.order[i - 1], t).text}, ${transition(set.order[i - 1], t).tempo}\n${row}` : row;
+    return i ? `    > ${transition(set.order[i - 1], t).text}, ${transition(set.order[i - 1], t).tempo}\n    > ${tipFor(set.order[i - 1], t).text}\n${row}` : row;
   }).join("\n") + "\n";
 }
 
@@ -791,77 +633,22 @@ function toast(msg) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
 }
 
-function energyBars(t) {
-  const bars = [1, 2, 3, 4, 5].map(i => `<i${i <= t.energy ? ' class="on"' : ""}></i>`).join("");
-  return `<span class="energy${t.est.energy ? " est" : ""}" role="img" title="Energy ${t.energy}/5">${bars}</span>`;
-}
+const fmtTime = sec => {
+  const v = Math.round(sec), h = Math.floor(v / 3600), m = Math.floor(v % 3600 / 60), x = v % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`;
+};
 
-function trackRow(t, i) {
-  return `<li class="track">
-    <div class="num">${String(i + 1).padStart(2, "0")}</div>
-    <div class="card">
-      <div><div class="name">${esc(t.title)}</div><div class="artist">${esc(t.artist)}</div></div>
-      <div class="readout">
-        <span class="bpm${t.est.bpm ? " est" : ""}">${t.est.bpm ? "~" : ""}${fmt(t.bpm)} BPM</span>
-        <span class="key${t.est.key ? " est" : ""}" style="--k:${keyColor(t.key)}">${t.est.key ? "~" : ""}${keyName(t.key)}</span>
-        ${energyBars(t)}
-      </div>
-    </div>
-  </li>`;
-}
-
-function transRow(a, b) {
-  const x = transition(a, b);
-  return `<li class="trans">
-    <span class="note ${x.tier}">${esc(x.text)}</span>
-    <span class="note tempo">${esc(x.tempo)}</span>
-    ${x.push ? `<span class="note push">${esc(x.push)}</span>` : ""}
-  </li>`;
-}
-
-function renderFlow(set) {
-  const o = set.order, n = o.length, cols = `repeat(${n}, minmax(0, 1fr))`;
-  const bpms = o.map(t => t.bpm), lo = Math.min(...bpms), hi = Math.max(...bpms), span = hi - lo;
-  const x = i => (i + .5) / n * 100;
-  const bpmY = v => span ? 90 - (v - lo) / span * 80 : 50;
-  const vibe = VIBES[set.vibeId];
-  const target = o.map((_, i) => `${x(i)},${100 - vibe.target(n > 1 ? i / (n - 1) : 0) / 5 * 100}`).join(" ");
-  const line = o.map((t, i) => `${x(i)},${bpmY(t.bpm)}`).join(" ");
-  $("plot").innerHTML = `<div class="bars" style="grid-template-columns:${cols}">${o.map(t =>
-    `<div title="${esc(t.title)}: energy ${t.energy}/5, ${keyName(t.key)}"><i style="height:${t.energy * 20}%;--k:${keyColor(t.key)}"></i></div>`).join("")}</div>
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <polyline class="target-line" points="${target}"/><polyline class="bpm-line" points="${line}"/>
-    </svg>`;
-  $("axis").style.gridTemplateColumns = cols;
-  $("axis").innerHTML = o.map((_, i) => `<span>${n > 16 && i % 2 ? "" : i + 1}</span>`).join("");
-  $("legend").innerHTML = `<span>Bars: energy 1-5</span>
-    <span><i></i>BPM <b>${fmt(lo)}${span ? "-" + fmt(hi) : ""}</b></span>
-    <span><i class="dash"></i>${esc(vibe.label)} target</span>`;
-}
-
-function renderWheel(set) {
-  const C = 150, rad = d => d * Math.PI / 180;
-  const pt = (r, a) => [C + r * Math.cos(rad(a)), C + r * Math.sin(rad(a))];
-  const ang = n => (n % 12) * 30 - 90;
-  const rings = { B: [146, 106], A: [106, 66] };
-  const used = new Set(set.order.map(t => keyName(t.key)));
-  let svg = "";
-  for (const m of ["B", "A"]) for (let n = 1; n <= 12; n++) {
-    const [ro, ri] = rings[m], a = ang(n), a0 = a - 15, a1 = a + 15;
-    const p = [pt(ro, a0), pt(ro, a1), pt(ri, a1), pt(ri, a0)].map(q => q.map(v => v.toFixed(2)).join(" "));
-    const on = used.has(n + m), mid = pt((ro + ri) / 2, a);
-    svg += `<path d="M${p[0]} A${ro} ${ro} 0 0 1 ${p[1]} L${p[2]} A${ri} ${ri} 0 0 0 ${p[3]} Z" fill="${on ? keyColor({ n, m }) : "var(--panel-2)"}" stroke="var(--bg)" stroke-width="1.5"/>`;
-    svg += `<text x="${mid[0].toFixed(1)}" y="${mid[1].toFixed(1)}" fill="${on ? "var(--ink)" : "var(--muted)"}">${n}${m}</text>`;
-  }
-  const spot = k => pt(k.m === "B" ? 116 : 76, ang(k.n) + 9);
-  const pts = set.order.map(t => spot(t.key));
-  svg += `<polyline points="${pts.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(--ink)" stroke-width="4" stroke-linejoin="round"/>`;
-  svg += `<polyline points="${pts.map(q => q.map(v => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(--fg)" stroke-width="1.75" stroke-linejoin="round"/>`;
-  svg += `<circle cx="${pts[0][0].toFixed(1)}" cy="${pts[0][1].toFixed(1)}" r="6" fill="var(--ink)" stroke="var(--fg)" stroke-width="2"/>`;
-  const e = pts[pts.length - 1];
-  svg += `<circle cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="4" fill="var(--fg)"/>`;
-  $("wheel").innerHTML = svg;
-  $("wheel-count").textContent = `${used.size} of 24 keys`;
+function tableRow(prev, t, i) {
+  const x = prev ? transition(prev, t) : null, tip = prev ? tipFor(prev, t) : null;
+  return `<tr>
+    <td class="c-num mono">${String(i + 1).padStart(2, "0")}</td>
+    <td class="c-key"><span class="kbadge${t.est.key ? " est" : ""}" style="--k:${keyColor(t.key)}" title="Camelot ${keyName(t.key)}">${keyName(t.key)}</span></td>
+    <td class="c-bpm mono${t.est.bpm ? " est" : ""}">${t.est.bpm ? "~" : ""}${fmt(t.bpm)}</td>
+    <td class="name">${esc(t.title)}</td>
+    <td class="artist">${esc(t.artist)}</td>
+    <td>${x ? `<span class="tr ${x.tier}">${esc(x.label)}</span>` : `<span class="tr none">Start</span>`}</td>
+    <td class="hint-cell">${tip ? `${tip.ai ? '<span class="ai">AI</span>' : ""}${esc(tip.text)}<span class="delta">${esc(x.tempo)}</span>` : ""}</td>
+  </tr>`;
 }
 
 function render(set, parsed) {
@@ -869,23 +656,25 @@ function render(set, parsed) {
   const harmonic = steps.filter(s => s.tier === "perfect" || s.tier === "smooth").length;
   const clashes = steps.filter(s => s.tier === "clash").length;
   const biggest = Math.max(0, ...o.slice(1).map((t, i) => Math.abs(t.bpm - o[i].bpm)));
+  const runtime = o.reduce((sum, t) => sum + trackSeconds(t), 0);
   $("set-title").textContent = set.name;
   $("set-vibe").textContent = set.vibe;
   $("stats").innerHTML = [
-    ["Tracks in set", o.length],
+    ["Tracks", o.length],
+    ["Runtime", fmtTime(runtime)],
     ["Harmonic mixes", `${harmonic}/${steps.length}`],
     ["Key clashes", clashes],
-    ["Largest BPM step", fmt(Math.round(biggest * 10) / 10)]
+    ["Max BPM step", fmt(Math.round(biggest * 10) / 10)]
   ].map(([k, v]) => `<div class="stat"><dt>${k}</dt><dd>${v}</dd></div>`).join("");
-  renderFlow(set);
-  renderWheel(set);
-  $("timeline").innerHTML = o.map((t, i) => (i ? transRow(o[i - 1], t) : "") + trackRow(t, i)).join("");
+  $("timeline").innerHTML = o.map((t, i) => tableRow(i ? o[i - 1] : null, t, i)).join("");
 
   const estimated = o.filter(t => t.est.bpm || t.est.key).length;
+  const noLength = o.filter(t => t.est.duration).length;
   const notes = [];
-  if (estimated) notes.push(`${estimated} of ${o.length} tracks use estimated values (marked with ~).`);
+  if (estimated) notes.push(`${estimated} of ${o.length} tracks use estimated BPM/key (marked ~).`);
+  if (noLength) notes.push(`${noLength} tracks have no known length: ${fmtTime(DEFAULT_DURATION)} assumed in the XML export.`);
   if (parsed.dupes) notes.push(`Removed ${parsed.dupes} duplicate tracks.`);
-  $("notice").innerHTML = notes.join(" ");
+  $("notice").textContent = notes.join(" ");
   $("notice").hidden = !notes.length;
 }
 
@@ -914,7 +703,7 @@ function applyPreset(id) {
   updateCount();
 }
 
-function run(instant) {
+function run(instant, { keepOrder = false } = {}) {
   const parsed = parseList($("tracks").value);
   const err = $("error");
   if (parsed.tracks.length < 2) {
@@ -931,9 +720,9 @@ function run(instant) {
   const finish = () => {
     try {
       current = {
-        name: presetId ? PRESETS[presetId].label : "Harmonic Set",
+        name: keepOrder ? "AI Curated Set" : presetId ? PRESETS[presetId].label : "Harmonic Set",
         vibe: VIBES[vibeId].label, vibeId, opts,
-        order: arrange(parsed.tracks, VIBES[vibeId], limit, opts)
+        order: keepOrder ? parsed.tracks.slice(0, limit || parsed.tracks.length) : arrange(parsed.tracks, VIBES[vibeId], limit, opts)
       };
       render(current, parsed);
     } catch (e) {
@@ -1014,7 +803,9 @@ $("btn-fetch").addEventListener("click", async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Failed to fetch playlist.");
-    $("tracks").value = data.tracks.join("\n");
+    $("tracks").value = (data.details || []).length
+      ? data.details.map(d => `${d.artist} - ${d.title}${d.duration_ms ? " | " + fmtTime(d.duration_ms / 1000) : ""}`).join("\n")
+      : data.tracks.join("\n");
     $("preset").value = "";
     updateCount();
     toast(`Imported ${data.count} tracks from playlist!`);
@@ -1025,6 +816,53 @@ $("btn-fetch").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = "Fetch Tracks";
+  }
+});
+
+function applyAiSet(data) {
+  const lines = data.tracks.map(t =>
+    `${t.artist} - ${t.title} | ${t.bpm} | ${t.key} | E${t.energy}${t.duration ? " | " + fmtTime(t.duration) : ""}`);
+  $("tracks").value = lines.join("\n");
+  $("preset").value = "";
+  updateCount();
+  aiTips.clear();
+  const parsed = parseList($("tracks").value);
+  if (data.tips && data.tips.length === parsed.tracks.length - 1) {
+    data.tips.forEach((tip, i) => aiTips.set(pairKey(parsed.tracks[i], parsed.tracks[i + 1]), tip));
+  }
+  const status = $("ai-status");
+  status.textContent = (data.source === "llm" ? "Curated by Claude." : "Local heuristic generator (no AI key set).") + (data.note ? " " + data.note : "");
+  status.hidden = false;
+  run(false, { keepOrder: true });
+  toast(`AI curated ${data.count} tracks.`);
+}
+
+$("btn-ai").addEventListener("click", async () => {
+  const prompt = $("ai-prompt").value.trim(), err = $("ai-error"), btn = $("btn-ai");
+  err.hidden = true;
+  $("ai-status").hidden = true;
+  if (prompt.length < 3) {
+    err.textContent = "Describe the set you want first.";
+    err.hidden = false;
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Curating...";
+  try {
+    const res = await fetch("/api/ai-suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Invalid prompt.");
+    applyAiSet(data);
+  } catch (e) {
+    err.textContent = e && e.name === "TypeError" ? "Backend offline. Start it with: python app.py" : e.message;
+    err.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "AI Curate Set";
   }
 });
 
