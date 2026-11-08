@@ -18,7 +18,6 @@
   --accent-dim: rgba(0, 168, 255, .14);
   --warn: #e0a030;
   --bad: #e5534b;
-  --ok: #5cb85c;
   --font-ui: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace;
 }
@@ -29,7 +28,7 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 400 13px/1.45 v
 button, select, textarea, input { font: inherit; color: inherit; }
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 
-.shell { max-width: 1480px; margin: 0 auto; padding: 12px max(12px, env(safe-area-inset-right, 0px)) 32px max(12px, env(safe-area-inset-left, 0px)); display: grid; gap: 12px; }
+.shell { max-width: 1180px; margin: 0 auto; padding: 12px max(12px, env(safe-area-inset-right, 0px)) 32px max(12px, env(safe-area-inset-left, 0px)); display: grid; gap: 12px; }
 
 .top { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; }
 .logo { width: 24px; height: 24px; flex: none; }
@@ -40,47 +39,42 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .status-badge { font: 500 11px/1 var(--font-mono); padding: 5px 8px; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); white-space: nowrap; }
 .status-badge.online { color: var(--accent); border-color: var(--accent); }
 
-.layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 12px; align-items: start; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 3px; min-width: 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .panel-head b { color: var(--fg); font-weight: 600; }
 .panel-head span { font: 400 11px var(--font-mono); text-transform: none; letter-spacing: 0; }
 
-form { display: grid; gap: 14px; padding: 12px; }
-.field { display: grid; gap: 5px; min-width: 0; border: 0; margin: 0; padding: 0; }
-.field-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-label, legend { font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 0; }
-select, textarea, input[type="url"] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; padding: 7px 8px; color: var(--fg); min-width: 0; }
-select:hover, textarea:hover, input[type="url"]:hover { border-color: #3d3d3d; }
-textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
-#tracks { min-height: 150px; }
-#ai-prompt { min-height: 66px; font-family: var(--font-ui); font-size: 13px; }
+/* ---- single agent input ---- */
+.agent-form { display: grid; gap: 10px; padding: 12px; }
+#main-input { width: 100%; min-height: 96px; resize: vertical; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; padding: 10px 12px; color: var(--fg); font: 400 14px/1.5 var(--font-ui); }
+#main-input:hover { border-color: #3d3d3d; }
+.agent-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.go { border: 1px solid var(--accent); background: var(--accent); color: #00131f; border-radius: 2px; padding: 10px 22px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.go:hover { filter: brightness(1.1); }
+.go:disabled, .go[aria-busy="true"] { opacity: .6; cursor: default; }
 .hint { margin: 0; color: var(--muted); font-size: 11px; }
-.hint code { font-family: var(--font-mono); color: var(--fg); }
 .error { margin: 0; color: var(--bad); font-size: 12px; }
-.url-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.agent-status { color: var(--muted); font: 400 12px var(--font-mono); }
 
-.btn, .btn-fetch, .go { border: 1px solid var(--line); background: var(--panel-2); border-radius: 2px; padding: 7px 12px; cursor: pointer; font-weight: 500; white-space: nowrap; }
-.btn:hover, .btn-fetch:hover { border-color: var(--accent); }
-.btn:disabled, .btn-fetch:disabled { opacity: .5; cursor: default; }
-.btn.primary, .go { background: var(--accent); border-color: var(--accent); color: #00131f; font-weight: 600; }
-.btn.primary:hover, .go:hover { filter: brightness(1.1); }
-.go { padding: 10px 12px; }
-.go[aria-busy="true"] { opacity: .6; }
-
-.sliders { gap: 12px; }
+/* ---- advanced overrides ---- */
+.advanced { border-top: 1px solid var(--line); }
+.advanced summary { cursor: pointer; padding: 9px 12px; color: var(--muted); font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; list-style: none; }
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced summary::before { content: "+"; display: inline-block; width: 14px; color: var(--accent); font-family: var(--font-mono); }
+.advanced[open] summary::before { content: "-"; }
+.advanced summary:hover { color: var(--fg); }
+.adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; padding: 4px 12px 14px; }
+.field { display: grid; gap: 5px; min-width: 0; border: 0; margin: 0; padding: 0; align-content: start; }
+.field-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+label { font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; padding: 7px 8px; color: var(--fg); }
+select:hover { border-color: #3d3d3d; }
 .slider-row { display: grid; gap: 4px; }
 .slider-row input[type="range"] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
 .slider-row output { font: 500 12px var(--font-mono); color: var(--accent); }
-.vibes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-.vibes label { text-transform: none; letter-spacing: 0; font: 500 12px var(--font-ui); color: var(--fg); position: relative; cursor: pointer; }
-.vibes input { position: absolute; opacity: 0; inset: 0; }
-.vibes span { display: block; text-align: center; padding: 7px 4px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); color: var(--muted); }
-.vibes input:checked + span { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-.vibes input:focus-visible + span { outline: 1px solid var(--accent); outline-offset: 1px; }
-
-.pool { display: grid; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); max-height: 150px; overflow-y: auto; }
-.pool:empty { display: none; }
+.arc-preview { width: 100%; height: 36px; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; }
+.pool { display: grid; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); max-height: 170px; overflow-y: auto; }
+.pool:empty::before { content: "No lists yet. They appear after Curate & Plan Set."; padding: 8px; color: var(--muted); font-size: 12px; }
 .pool-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 8px; border-bottom: 1px solid #232323; }
 .pool-row:last-child { border-bottom: 0; }
 .pool-row label { display: flex; gap: 6px; align-items: center; min-width: 0; cursor: pointer; text-transform: none; letter-spacing: 0; font: 500 12px var(--font-ui); color: var(--fg); }
@@ -88,31 +82,31 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
 .pool-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pool-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
 .pool-x:hover { color: var(--bad); }
-.arc-preview { width: 100%; height: 36px; background: var(--bg); border: 1px solid var(--line); border-radius: 2px; }
-.brief-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 12px; }
-#gig-text { min-height: 58px; font-family: var(--font-ui); font-size: 13px; }
-.memo { margin: 0 12px 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--bg); border-radius: 2px; }
-.memo h2 { margin: 0 0 4px; font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+
+/* ---- agent reasoning memo ---- */
+.memo { padding: 10px 12px 12px; border-left: 3px solid var(--accent); }
+.memo h2 { margin: 0 0 6px; font: 600 11px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--accent); display: flex; justify-content: space-between; gap: 8px; }
+.memo h2 span { color: var(--muted); font: 400 11px var(--font-mono); text-transform: none; letter-spacing: 0; }
 .memo p { margin: 0; }
+.steps { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; color: #b4b4b4; font-size: 12px; }
+.steps li::before { content: "> "; color: var(--accent); font-family: var(--font-mono); }
 .chips { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.chips li { font: 500 11.5px var(--font-mono); padding: 3px 8px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel); }
+.chips li { font: 500 11.5px var(--font-mono); padding: 3px 8px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); }
 .chips li b { color: var(--muted); font-weight: 400; margin-right: 6px; }
-.set-panel { position: relative; min-height: 360px; }
+
+/* ---- result table ---- */
+.set-panel { position: relative; min-height: 200px; }
 .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .stat { display: flex; gap: 6px; align-items: baseline; }
 .stat dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .stat dd { margin: 0; font: 500 12px var(--font-mono); }
-.actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); align-items: center; }
-.actions p { margin: 0 0 0 auto; color: var(--muted); font-size: 11px; }
 .notice { margin: 0; padding: 7px 12px; color: var(--warn); font-size: 12px; border-bottom: 1px solid var(--line); }
-.export-view { padding: 8px 12px; border-bottom: 1px solid var(--line); }
-.export-view textarea { min-height: 160px; }
-
 .table-wrap { overflow-x: auto; }
-.grid { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12.5px; }
-.grid th { text-align: left; padding: 7px 10px; font: 600 10.5px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; white-space: nowrap; }
+.grid { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 12.5px; }
+.grid th { text-align: left; padding: 7px 10px; font: 600 10.5px/1.2 var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
 .grid td { padding: 7px 10px; border-bottom: 1px solid #232323; vertical-align: top; }
 .grid tbody tr:hover { background: var(--panel-2); }
+.grid .empty td { padding: 26px 12px; color: var(--muted); text-align: center; }
 .grid .c-num { width: 40px; color: var(--muted); }
 .grid .c-key { width: 62px; }
 .grid .c-bpm { width: 70px; text-align: right; }
@@ -130,23 +124,21 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
 .tr.clash { color: var(--bad); }
 .tr.none { color: var(--muted); }
 .tr.none::before { display: none; }
-.hint-cell { color: #c4c4c4; max-width: 420px; }
-.hint-cell .delta { display: block; margin-top: 2px; color: var(--muted); font: 400 11px var(--font-mono); }
-.hint-cell .ai { font: 600 9.5px var(--font-mono); letter-spacing: .06em; color: var(--accent); border: 1px solid var(--accent); border-radius: 2px; padding: 0 4px; margin-right: 6px; vertical-align: 1px; }
+.delta { display: block; margin-top: 2px; color: var(--muted); font: 400 11px var(--font-mono); }
 
-.loader { position: absolute; inset: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: center; padding: 90px 16px 16px; background: rgba(18, 18, 18, .92); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 2px; padding: 7px 14px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #00131f; font-weight: 600; }
+
+.loader { position: absolute; inset: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: center; padding: 70px 16px 16px; background: rgba(18, 18, 18, .92); }
 .loader-box { width: min(320px, 100%); display: grid; gap: 10px; text-align: center; }
 #stage { font: 500 12px var(--font-mono); color: var(--fg); min-height: 18px; }
 .meter { height: 2px; background: var(--line); }
 .meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s linear; }
 
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--accent); padding: 8px 14px; border-radius: 2px; font-size: 12px; z-index: 5; max-width: calc(100vw - 24px); }
-
-@media (max-width: 960px) {
-  .brief-body { grid-template-columns: minmax(0, 1fr); }
-  .layout { grid-template-columns: minmax(0, 1fr); }
-  .actions p { margin-left: 0; width: 100%; }
-}
 </style>
 </head>
 <body>
@@ -160,72 +152,19 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
     <span class="status-badge" id="backend-status">Checking backend...</span>
   </header>
 
-  <section class="panel brief" id="brief" aria-label="Event and gig brief">
-    <div class="panel-head"><b>Event &amp; Gig Brief (AI Decision Engine)</b><span id="gig-source"></span></div>
-    <div class="brief-body">
-      <div class="field">
-        <label for="gig-text">Event description, set time or poster text</label>
-        <textarea id="gig-text" maxlength="2000" spellcheck="false" placeholder="Opening slot at warehouse party 22-00, dark hypnotic vibes"></textarea>
-        <p class="error" id="gig-error" hidden></p>
+  <section class="panel agent" aria-label="Gig brief">
+    <form class="agent-form" id="form" novalidate>
+      <textarea id="main-input" maxlength="4000" spellcheck="false" aria-label="Gig description or playlist links" placeholder="Describe your gig, vibe, venue, or paste Spotify/SoundCloud/YouTube links..."></textarea>
+      <div class="agent-row">
+        <button class="go" id="go" type="submit">Curate &amp; Plan Set</button>
+        <span class="agent-status" id="agent-status" role="status"></span>
       </div>
-      <button class="btn primary" id="btn-gig" type="button">Analyze Gig &amp; Plan Set</button>
-    </div>
-    <div class="memo" id="gig-memo" hidden>
-      <h2>Gig Strategy Memo</h2>
-      <p id="gig-rationale"></p>
-      <ul class="chips" id="gig-chips"></ul>
-      <p class="hint" id="gig-note" hidden></p>
-    </div>
-  </section>
+      <p class="error" id="error" role="alert" hidden></p>
+    </form>
 
-  <main class="layout">
-    <section class="panel input-panel" aria-label="Track input">
-      <div class="panel-head"><b>Source</b><span id="count">0 lines</span></div>
-      <form id="form" novalidate>
-        <div class="field">
-          <label for="preset">Preset</label>
-          <select id="preset">
-            <option value="">Custom track list</option>
-            <option value="tech">Tech House Peak Hour</option>
-            <option value="melodic">Melodic Techno Journey</option>
-            <option value="dnb">Drum &amp; Bass Energy Run</option>
-            <option value="latin">Latin Tech (124-128 BPM)</option>
-            <option value="rave">Peak Time Rave (138-144 BPM)</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="playlist-url">Playlist URL</label>
-          <div class="url-row">
-            <input type="url" id="playlist-url" placeholder="YouTube, SoundCloud or Spotify playlist" autocomplete="off">
-            <button class="btn-fetch" id="btn-fetch" type="button">Fetch</button>
-          </div>
-          <p class="error" id="fetch-error" hidden></p>
-        </div>
-
-        <div class="field">
-          <label for="ai-prompt">AI Vibe Prompt</label>
-          <textarea id="ai-prompt" maxlength="500" spellcheck="false" placeholder="Dark peak-time techno set that starts at 130 BPM and ends at 140 BPM with heavy drops"></textarea>
-          <button class="btn primary" id="btn-ai" type="button">AI Curate Set</button>
-          <p class="error" id="ai-error" hidden></p>
-          <p class="hint" id="ai-status" hidden></p>
-        </div>
-
-        <div class="field pool-field">
-          <div class="field-header">
-            <label id="pool-label">Track Pool</label>
-            <span class="hint" id="pool-total"></span>
-          </div>
-          <div class="pool" id="pool" role="group" aria-labelledby="pool-label"></div>
-          <p class="hint">Each fetched or AI-curated list is added here. Only ticked lists are used to build the set.</p>
-        </div>
-
-        <div class="field">
-          <label for="tracks">Custom track list</label>
-          <textarea id="tracks" spellcheck="false" wrap="off" placeholder="Artist - Title | 128 | 8A | E4 | 5:30"></textarea>
-          <p class="hint">One track per line: <code>Artist - Title | BPM | Key | E1-E5 | m:ss</code>. Missing data is estimated (~).</p>
-        </div>
-
+    <details class="advanced" id="advanced">
+      <summary>Advanced Overrides (Auto-managed by AI)</summary>
+      <div class="adv-grid">
         <div class="field">
           <label for="set-len">Set Duration</label>
           <select id="set-len">
@@ -255,7 +194,7 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
           </div>
         </div>
 
-        <div class="field sliders">
+        <div class="field">
           <div class="slider-row">
             <div class="field-header">
               <label for="strictness">Harmonic Strictness</label>
@@ -274,123 +213,57 @@ textarea { resize: vertical; font: 400 12px/1.5 var(--font-mono); }
           </div>
         </div>
 
-        <p class="error" id="error" role="alert" hidden></p>
-        <button class="go" id="go" type="submit">Generate Harmonic Set</button>
-      </form>
-    </section>
-
-    <section class="panel set-panel" aria-label="Generated set">
-      <div class="panel-head"><b id="set-title">Set</b><span id="set-vibe"></span></div>
-      <dl class="stats" id="stats"></dl>
-      <div class="actions">
-        <button class="btn primary" id="dl-xml" type="button">Rekordbox XML (8 Hot Cues)</button>
-        <button class="btn" id="dl-m3u" type="button">M3U Playlist</button>
-        <button class="btn" id="copy" type="button">Copy Tracklist</button>
-        <p>Hot cues A-H stay inside each track's real length. XML includes the full set and one playlist per arc phase.</p>
-      </div>
-      <div class="export-view" id="export-view" hidden>
-        <div><strong id="export-name"></strong><button class="btn" id="export-close" type="button">Close</button></div>
-        <textarea id="export-text" readonly wrap="off"></textarea>
-      </div>
-      <p class="notice" id="notice" hidden></p>
-      <div class="table-wrap">
-        <table class="grid" aria-label="Generated set">
-          <thead>
-            <tr>
-              <th class="c-num">#</th><th class="c-key">Key</th><th class="c-bpm">BPM</th>
-              <th>Title</th><th>Artist</th><th>Transition</th><th>AI Mix Hint</th>
-            </tr>
-          </thead>
-          <tbody id="timeline"></tbody>
-        </table>
-      </div>
-      <div class="loader" id="loader" hidden>
-        <div class="loader-box" role="status">
-          <div id="stage"></div>
-          <div class="meter"><i id="meter"></i></div>
+        <div class="field pool-field">
+          <div class="field-header">
+            <label id="pool-label">Track Pool</label>
+            <span class="hint" id="pool-total"></span>
+          </div>
+          <div class="pool" id="pool" role="group" aria-labelledby="pool-label"></div>
+          <p class="hint">Only ticked lists are used to build the set.</p>
         </div>
       </div>
-    </section>
-  </main>
+    </details>
+  </section>
+
+  <section class="panel memo" id="gig-memo" aria-label="Agent reasoning memo" hidden>
+    <h2>Agent Reasoning Memo <span id="gig-source"></span></h2>
+    <p id="gig-rationale"></p>
+    <ul class="chips" id="gig-chips"></ul>
+    <ul class="steps" id="gig-steps"></ul>
+    <p class="hint" id="gig-note" hidden></p>
+  </section>
+
+  <section class="panel set-panel" aria-label="Generated set">
+    <div class="panel-head"><b id="set-title">Set</b><span id="set-vibe"></span></div>
+    <dl class="stats" id="stats"></dl>
+    <p class="notice" id="notice" hidden></p>
+    <div class="table-wrap">
+      <table class="grid" aria-label="Generated set">
+        <thead>
+          <tr>
+            <th class="c-num">#</th><th class="c-key">Key</th><th class="c-bpm">BPM</th>
+            <th>Title</th><th>Artist</th><th>Transition</th>
+          </tr>
+        </thead>
+        <tbody id="timeline"><tr class="empty"><td colspan="6">Describe your gig above and press Curate &amp; Plan Set.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="dl-xml" type="button" disabled>Rekordbox XML (8 Hot Cues)</button>
+      <button class="btn" id="dl-m3u" type="button" disabled>M3U Playlist</button>
+    </div>
+    <div class="loader" id="loader" hidden>
+      <div class="loader-box" role="status">
+        <div id="stage"></div>
+        <div class="meter"><i id="meter"></i></div>
+      </div>
+    </div>
+  </section>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
 "use strict";
-const PRESETS = {
-  tech: { label: "Tech House Peak Hour", tracks: `Fisher - Losing It | 125 | 8A | E4
-Chris Lake - Turn Off The Lights | 126 | 9A | E4
-Dom Dolla - Rhyme Dust | 126 | 8A | E5
-Cloonee - Fine Night | 127 | 11A | E4
-John Summit - Where You Are | 126 | 10B | E5
-Michael Bibi - Got The Fire | 125 | 7A | E3
-Pawsa - Dog Tales | 128 | 9A | E4
-Mau P - Drugs From Amsterdam | 125 | 8A | E5
-Gorgon City - Voodoo | 125 | 9A | E4
-Vintage Culture - Fractions | 126 | 10A | E3
-Sidepiece - Together | 126 | 11B | E4
-Green Velvet - Bigger Than Prince | 124 | 8A | E3` },
-  melodic: { label: "Melodic Techno Journey", tracks: `ARTBAT - Return to Oz | 124 | 4A | E3
-Anyma - Consciousness | 126 | 5A | E4
-Tale Of Us - Astral | 124 | 6A | E3
-Stephan Bodzin - Singularity | 123 | 6A | E3
-CamelPhat - For a Feeling | 122 | 5B | E2
-Mind Against - Walking Away | 124 | 7A | E4
-Maceo Plex - Insomnia | 125 | 8A | E5
-Adriatique - Home | 124 | 8A | E4
-Innellea - Transhumanism | 125 | 9A | E4
-Kevin de Vries - Dance With Me | 126 | 8A | E5
-Colyn - Oxygen Levels Low | 123 | 3A | E3
-Monolink - Return to Oz (Artbat Remix) | 125 | 4A | E5` },
-  dnb: { label: "Drum & Bass Energy Run", tracks: `Sub Focus - Desire | 174 | 10A | E4
-Dimension - DJ Turn It Up | 175 | 11A | E5
-Wilkinson - Afterglow | 174 | 1A | E5
-Chase & Status - Baddadan | 174 | 12A | E5
-Bou - Closer | 174 | 12B | E4
-Hedex - MHITR | 175 | 1A | E5
-K Motionz - High Note | 174 | 11A | E4
-Kanine - Get Down | 175 | 2A | E5
-Luude - Down Under | 174 | 1B | E4
-Goddard - Messy in Heaven | 172 | 9A | E3
-Serum - Lumberjack | 174 | 10A | E4
-Camo & Krooked - Sientelo | 174 | 12A | E5` }
-};
-
-// Genre metadata: bpm = expected tempo range, strictness / tempoFlex = slider defaults applied with the preset.
-Object.assign(PRESETS.tech, { bpm: [124, 128], strictness: 2, tempoFlex: 4 });
-Object.assign(PRESETS.melodic, { bpm: [122, 126], strictness: 1, tempoFlex: 3 });
-Object.assign(PRESETS.dnb, { bpm: [172, 176], strictness: 2, tempoFlex: 3 });
-PRESETS.latin = { label: "Latin Tech", bpm: [124, 128], strictness: 2, tempoFlex: 4, tracks: `Hugel - Bella Ciao | 125 | 8A | E4
-Gordo - Cuando Te Vea | 126 | 9A | E4
-Pawsa - Cumbia Negra | 124 | 7A | E3
-Vintage Culture - La Fiesta | 126 | 8A | E4
-Rafa Barrios - Tropical Heat | 125 | 10A | E4
-Cloonee - Latin Lover | 127 | 9A | E5
-Dennis Cruz - Fuego | 128 | 11A | E5
-Mochakk - Tambor | 126 | 8B | E4
-Biscits - Salsa Loca | 124 | 6A | E3
-Santi D'Orazio - Mambo | 127 | 10A | E5
-Hot Since 82 - Havana Nights | 125 | 7A | E3
-Eli Brown - Caliente | 128 | 9A | E5` };
-PRESETS.rave = { label: "Peak Time Rave", bpm: [138, 144], strictness: 2, tempoFlex: 3, tracks: `Charlotte de Witte - Doppler | 140 | 5A | E4
-Amelie Lens - Hypnotized | 138 | 6A | E4
-I Hate Models - Daydream | 141 | 5A | E5
-Sara Landry - Warriors | 142 | 4A | E5
-KI/KI - Night Drive | 140 | 6A | E3
-Reinier Zonneveld - Rave Tool | 142 | 7A | E5
-Nico Moreno - Cyberpunk | 144 | 5A | E5
-Pegassi - Brutal Mind | 143 | 8A | E5
-Enrico Sangiuliano - Biomechanics | 139 | 4A | E4
-Dax J - Hard Pulse | 144 | 6A | E5
-Ben Klock - Subzero | 138 | 7A | E3
-Space 92 - Warehouse | 141 | 5B | E4` };
-
-const VIBES = {
-  build: { label: "Gradual Build", dir: 1, target: p => 1.4 + 3.6 * Math.pow(p, 1.2) },
-  peak: { label: "Peak Time Banger", dir: 0, target: p => p < .15 ? 3.6 + p * 9 : (p > .55 && p < .7 ? 4 : 5) },
-  chill: { label: "Chill/Warm-up", dir: .5, target: p => 1.2 + 1.8 * p }
-};
-
 // ---- Drama arcs: target energy (1-5) over the set position p (0-1); pk = position of the main peak ----
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const PEAK_MIN = 50, PEAK_MAX = 90;
@@ -503,6 +376,12 @@ function splitName(raw) {
   return { artist: "Unknown artist", title: s };
 }
 
+// Identity used to drop duplicates: case, punctuation and "Radio Edit"-style suffixes are ignored (see track_key in app.py).
+const trackKey = (artist, title) => `${artist} ${title}`.toLowerCase()
+  .replace(/\b(?:radio|extended|original|club|album)[\s-]*(?:edit|mix|version)\b/g, " ")
+  .replace(/\bremaster(?:ed)?(?:\s*\d{4})?\b/g, " ")
+  .replace(/[^a-z0-9äöå]+/g, "");
+
 const DEFAULT_DURATION = 360; // seconds, used (and marked ~) when a track has no known length
 
 function parseList(text) {
@@ -523,7 +402,7 @@ function parseList(text) {
     }
     if (duration !== null && duration < 30) duration = null;
     const t = splitName(name);
-    const id = (t.artist + "|" + t.title).toLowerCase();
+    const id = trackKey(t.artist, t.title);
     if (seen.has(id)) { dupes++; continue; }
     seen.add(id);
     out.push({ ...t, bpm, key, energy, duration, est: { bpm: bpm === null, key: key === null, energy: energy === null, duration: duration === null } });
@@ -637,10 +516,6 @@ function mixTip(a, b) {
   return tip;
 }
 
-const aiTips = new Map(); // "Artist - Title >> Artist - Title" -> hint written by the AI backend
-const pairKey = (a, b) => `${a.artist} - ${a.title} >> ${b.artist} - ${b.title}`;
-const tipFor = (a, b) => aiTips.has(pairKey(a, b)) ? { text: aiTips.get(pairKey(a, b)), ai: true } : { text: mixTip(a, b), ai: false };
-
 function transition(a, b) {
   const rel = relation(a.key, b.key);
   const d = b.bpm - a.bpm, e = b.energy - a.energy, pct = d / a.bpm * 100;
@@ -717,7 +592,7 @@ function buildXML(set) {
     const attrs = [
       `TrackID="${i + 1}"`, `Name="${xmlEsc(t.title)}"`, `Artist="${xmlEsc(t.artist)}"`,
       `Kind="MP3 File"`, `TotalTime="${Math.round(dur)}"`, `AverageBpm="${t.bpm.toFixed(2)}"`, `Tonality="${xmlEsc(musicalKey(t.key))}"`,
-      `Comments="${xmlEsc(`#${i + 1} Camelot ${keyName(t.key)}` + (i ? ` | Mix: ${tipFor(set.order[i - 1], t).text}` : ""))}"`,
+      `Comments="${xmlEsc(`#${i + 1} Camelot ${keyName(t.key)}` + (i ? ` | Mix: ${mixTip(set.order[i - 1], t)}` : ""))}"`,
       `Location="file://localhost/HarmonicFlow/${encodeURIComponent(safeFile(lineName(t)) + ".mp3")}"`
     ];
     return `    <TRACK ${attrs.join(" ")}>\n${marksXml}\n    </TRACK>`;
@@ -747,7 +622,7 @@ ${nodes.join("\n")}
 function buildText(set) {
   return `${set.name} (${set.vibe})\n` + set.order.map((t, i) => {
     const row = `${String(i + 1).padStart(2, "0")}. ${lineName(t)} [${fmt(t.bpm)} BPM, ${keyName(t.key)}, Energy ${t.energy}/5]`;
-    return i ? `    > ${transition(set.order[i - 1], t).text}, ${transition(set.order[i - 1], t).tempo}\n    > ${tipFor(set.order[i - 1], t).text}\n${row}` : row;
+    return i ? `    > ${transition(set.order[i - 1], t).text}, ${transition(set.order[i - 1], t).tempo}\n    > ${mixTip(set.order[i - 1], t)}\n${row}` : row;
   }).join("\n") + "\n";
 }
 
@@ -768,15 +643,14 @@ const fmtTime = sec => {
 };
 
 function tableRow(prev, t, i) {
-  const x = prev ? transition(prev, t) : null, tip = prev ? tipFor(prev, t) : null;
+  const x = prev ? transition(prev, t) : null;
   return `<tr>
     <td class="c-num mono">${String(i + 1).padStart(2, "0")}</td>
     <td class="c-key"><span class="kbadge${t.est.key ? " est" : ""}" style="--k:${keyColor(t.key)}" title="Camelot ${keyName(t.key)}">${keyName(t.key)}</span></td>
     <td class="c-bpm mono${t.est.bpm ? " est" : ""}">${t.est.bpm ? "~" : ""}${fmt(t.bpm)}</td>
     <td class="name">${esc(t.title)}</td>
     <td class="artist">${esc(t.artist)}</td>
-    <td>${x ? `<span class="tr ${x.tier}">${esc(x.label)}</span>` : `<span class="tr none">Start</span>`}</td>
-    <td class="hint-cell">${tip ? `${tip.ai ? '<span class="ai">AI</span>' : ""}${esc(tip.text)}<span class="delta">${esc(x.tempo)}</span>` : ""}</td>
+    <td>${x ? `<span class="tr ${x.tier}">${esc(x.label)}</span><span class="delta">${esc(x.tempo)}</span>` : `<span class="tr none">Start</span>`}</td>
   </tr>`;
 }
 
@@ -805,15 +679,12 @@ function render(set, parsed) {
   if (noLength) notes.push(`${noLength} tracks have no known length: ${fmtTime(DEFAULT_DURATION)} assumed in the XML export.`);
   if (parsed.dupes) notes.push(`Removed ${parsed.dupes} duplicate tracks.`);
   if (set.targetSec && o.length === parsed.tracks.length && runtime < set.targetSec * .9) {
-    notes.push(`The selected lists only add up to ${fmtTime(runtime)} of the ${fmtTime(set.targetSec)} target. Add more lists to Track Pool.`);
+    notes.push(`Only ${o.length} unique tracks are available (${fmtTime(runtime)} of the ${fmtTime(set.targetSec)} target), so the set ends there instead of repeating songs.`);
   }
   $("notice").textContent = notes.join(" ");
   $("notice").hidden = !notes.length;
-}
-
-function updateCount() {
-  const n = $("tracks").value.split(/\r?\n/).filter(l => l.trim()).length;
-  $("count").textContent = `${n} ${n === 1 ? "line" : "lines"}`;
+  $("dl-xml").disabled = false;
+  $("dl-m3u").disabled = false;
 }
 
 function readOpts() {
@@ -850,34 +721,32 @@ function syncSliders() {
 }
 
 // ---- Track pool: every list keeps its own raw lines; only ticked lists feed arrange() ----
-const sources = [{ id: "manual", name: "Custom list", checked: true, manual: true, text: "" }];
-const sourceText = src => src.manual ? $("tracks").value : src.text;
+const sources = [];
 
 function renderPool() {
   $("pool").innerHTML = sources.map(src => {
-    const n = parseList(sourceText(src)).tracks.length;
+    const n = parseList(src.text).tracks.length;
     return `<div class="pool-row"><label><input type="checkbox" data-id="${esc(src.id)}"${src.checked ? " checked" : ""}>` +
       `<span class="pool-name">${esc(src.name)}</span><span class="mono">(${n})</span></label>` +
-      (src.manual ? "" : `<button class="pool-x" type="button" data-remove="${esc(src.id)}" aria-label="Remove ${esc(src.name)}">&times;</button>`) + `</div>`;
+      `<button class="pool-x" type="button" data-remove="${esc(src.id)}" aria-label="Remove ${esc(src.name)}">&times;</button></div>`;
   }).join("");
-  const total = parseList(sources.filter(x => x.checked).map(sourceText).join("\n")).tracks.length;
-  $("pool-total").textContent = `${total} tracks selected`;
+  const total = parseList(sources.filter(x => x.checked).map(x => x.text).join("\n")).tracks.length;
+  $("pool-total").textContent = sources.length ? `${total} tracks selected` : "";
 }
 
 function addSource(src) {
   const i = sources.findIndex(x => x.id === src.id);
-  if (i > 0) sources[i] = src; else sources.push(src); // the same URL / the AI list replaces its old entry
+  if (i >= 0) sources[i] = src; else sources.push(src); // the same URL replaces its old entry
   renderPool();
 }
 
-function parsePool(onlyId) {
-  const chosen = onlyId ? sources.filter(x => x.id === onlyId) : sources.filter(x => x.checked);
-  return parseList(chosen.map(sourceText).join("\n"));
-}
+// All ticked lists are merged and de-duplicated as one pool (the first occurrence of a track wins).
+const parsePool = () => parseList(sources.filter(x => x.checked).map(x => x.text).join("\n"));
 
 const sumSeconds = list => list.reduce((sum, t) => sum + trackSeconds(t), 0);
 
-// Picks as many tracks as fit the target length (the full pool when it is shorter) and arranges them along the arc.
+// Picks as many unique tracks as fit the target length (the whole pool when it is shorter) and arranges them along the arc.
+// A track is never repeated to fill time: a short pool simply gives a shorter set.
 function arrangeForDuration(tracks, shape, targetSec, opts) {
   const total = sumSeconds(tracks);
   if (total <= targetSec) return arrange(tracks, shape, null, opts);
@@ -895,55 +764,30 @@ function arrangeForDuration(tracks, shape, targetSec, opts) {
   return order;
 }
 
-// For AI sets the AI's own order is kept; only the length is trimmed to the target.
-function takeByDuration(tracks, targetSec) {
-  const out = [];
-  let sum = 0;
-  for (const t of tracks) {
-    if (sum >= targetSec) break;
-    out.push(t);
-    sum += trackSeconds(t);
-  }
-  if (out.length > 2 && sum - targetSec > trackSeconds(out[out.length - 1]) / 2) out.pop();
-  return out;
-}
-
-function applyPreset(id) {
-  const p = PRESETS[id];
-  $("tracks").value = p.tracks;
-  sources[0].name = p.label;
-  if (p.strictness) $("strictness").value = p.strictness;
-  if (p.tempoFlex) $("tempo-flex").value = p.tempoFlex;
-  syncSliders();
-  updateCount();
-  renderPool();
-}
-
-function run(instant, { keepOrder = false, onlySource = null } = {}) {
-  const parsed = parsePool(onlySource);
+function run(instant, { name = "Harmonic Set" } = {}) {
+  const parsed = parsePool();
   const err = $("error");
   if (parsed.tracks.length < 2) {
     ++runId;
     $("loader").hidden = true;
     $("go").removeAttribute("aria-busy");
-    err.textContent = "Select at least two tracks: tick a list in Track Pool or paste a custom list.";
+    err.textContent = sources.length
+      ? "Select at least two tracks: tick a list in Track Pool (Advanced Overrides)."
+      : "Describe your gig above and press Curate & Plan Set.";
     err.hidden = false;
     return;
   }
   err.hidden = true;
-  const presetId = $("preset").value;
   const { arc, peakPos } = readArc();
   const shape = arcShape(arc, peakPos);
   const targetSec = durationSeconds();
   const opts = readOpts();
-  const presetOnly = presetId && sources.every(x => x.manual || !x.checked);
 
   const finish = () => {
     try {
       current = {
-        name: keepOrder ? "AI Curated Set" : presetOnly ? PRESETS[presetId].label : "Harmonic Set",
-        vibe: `${shape.label} / peak ${Math.round(shape.peakPos * 100)}%`, vibeId: arc, arc, peakPos: shape.peakPos, targetSec, opts,
-        order: keepOrder ? takeByDuration(parsed.tracks, targetSec) : arrangeForDuration(parsed.tracks, shape, targetSec, opts)
+        name, vibe: `${shape.label} / peak ${Math.round(shape.peakPos * 100)}%`, vibeId: arc, arc, peakPos: shape.peakPos, targetSec, opts,
+        order: arrangeForDuration(parsed.tracks, shape, targetSec, opts)
       };
       render(current, parsed);
     } catch (e) {
@@ -1004,92 +848,38 @@ async function checkBackend() {
   badge.classList.remove("online");
 }
 
-const trackLines = details => details.map(d =>
-  `${d.artist} - ${d.title}${d.duration_ms ? " | " + fmtTime(d.duration_ms / 1000) : ""}`);
+// ---- Agent pipeline: one input -> links / curation -> parameter decisions -> arrangement ----
+const MAX_LINKS = 8;
+const URL_RE = /[(\[<]?https?:\/\/[^\s<>"']+/gi;
 
-$("btn-fetch").addEventListener("click", async () => {
-  const url = $("playlist-url").value.trim();
-  const err = $("fetch-error");
-  if (!url) {
-    err.textContent = "Please enter a playlist URL.";
-    err.hidden = false;
-    return;
-  }
-  err.hidden = true;
-  const btn = $("btn-fetch");
-  btn.disabled = true;
-  btn.textContent = "Fetching...";
-  try {
-    const res = await fetch("/api/fetch-playlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Failed to fetch playlist.");
-    const text = (data.details || []).length ? trackLines(data.details).join("\n") : data.tracks.join("\n");
-    const name = data.name || "Imported list";
-    addSource({ id: "url:" + url, name, text, checked: true });
-    $("playlist-url").value = "";
-    toast(`Added "${name}" (${data.count} tracks) to Track Pool.`);
-    run(false);
-  } catch (e) {
-    err.textContent = e && e.name === "TypeError" ? "Backend offline. Start it with: python app.py" : e.message;
-    err.hidden = false;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Fetch";
-  }
-});
-
-function applyAiSet(data) {
-  const lines = data.tracks.map(t =>
-    `${t.artist} - ${t.title} | ${t.bpm} | ${t.key} | E${t.energy}${t.duration ? " | " + fmtTime(t.duration) : ""}`);
-  const prompt = $("ai-prompt").value.trim();
-  addSource({ id: "ai", name: `AI: ${prompt.slice(0, 28)}${prompt.length > 28 ? "..." : ""}`, text: lines.join("\n"), checked: true });
-  aiTips.clear();
-  const parsed = parseList(lines.join("\n"));
-  if (data.tips && data.tips.length === parsed.tracks.length - 1) {
-    data.tips.forEach((tip, i) => aiTips.set(pairKey(parsed.tracks[i], parsed.tracks[i + 1]), tip));
-  }
-  const status = $("ai-status");
-  status.textContent = (data.source === "llm" ? "Curated by Claude." : "Local heuristic generator (no AI key set).") + (data.note ? " " + data.note : "");
-  status.hidden = false;
-  run(false, { keepOrder: true, onlySource: "ai" });
-  toast(`AI curated ${data.count} tracks.`);
+// Splits the single input into playlist links and the free-text brief.
+function splitInput(text) {
+  const urls = [];
+  let extra = 0;
+  const brief = text.replace(URL_RE, m => {
+    const u = m.replace(/^[(\[<]/, "").replace(/[),.;!?\]]+$/, "");
+    if (!urls.includes(u)) { if (urls.length < MAX_LINKS) urls.push(u); else extra++; }
+    return " ";
+  }).replace(/\s+/g, " ").trim();
+  return { urls, brief, extra };
 }
 
-$("btn-ai").addEventListener("click", async () => {
-  const prompt = $("ai-prompt").value.trim(), err = $("ai-error"), btn = $("btn-ai");
-  err.hidden = true;
-  $("ai-status").hidden = true;
-  if (prompt.length < 3) {
-    err.textContent = "Describe the set you want first.";
-    err.hidden = false;
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = "Curating...";
-  try {
-    const res = await fetch("/api/ai-suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Invalid prompt.");
-    applyAiSet(data);
-  } catch (e) {
-    err.textContent = e && e.name === "TypeError" ? "Backend offline. Start it with: python app.py" : e.message;
-    err.hidden = false;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "AI Curate Set";
-  }
-});
+const shortUrl = u => u.replace(/^https?:\/\/(?:www\.)?/i, "").slice(0, 48);
 
-// ---- Gig Brief agent: the decisions land in the normal controls, the DJ can still tweak them before Generate ----
-function applyGigPlan(plan) {
+async function postJSON(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Request failed.");
+  return data;
+}
+
+const trackLines = details => details.map(d =>
+  `${d.artist} - ${d.title}${d.duration_ms ? " | " + fmtTime(d.duration_ms / 1000) : ""}`);
+const curatedLines = tracks => tracks.map(t =>
+  `${t.artist} - ${t.title} | ${t.bpm} | ${t.key} | E${t.energy}${t.duration ? " | " + fmtTime(t.duration) : ""}`);
+
+// Shows the agent's decisions in the normal controls and in the reasoning memo.
+function applyGigPlan(plan, steps = []) {
   const num = (v, lo, hi) => Number.isFinite(+v) && v !== null && v !== "" ? clamp(Math.round(+v), lo, hi) : null;
   const hours = num(plan.duration_hours, 1, 4);
   if (hours !== null) $("set-len").value = String(hours * 3600);
@@ -1111,48 +901,79 @@ function applyGigPlan(plan) {
     ["Duration", `${durationSeconds() / 3600} h`], ["Curve", ARCS[a.arc].label], ["Peak", `${Math.round(a.peakPos * 100)}%`],
     ["Strictness", `${o.strictness} / 3`], ["Tempo", `±${o.tempoFlex} BPM`], ["Pools", picked.join(", ") || "none"]
   ].map(([k, v]) => `<li><b>${k}</b>${esc(v)}</li>`).join("");
+  $("gig-steps").innerHTML = steps.map(x => `<li>${esc(x)}</li>`).join("");
   $("gig-note").textContent = plan.note || "";
   $("gig-note").hidden = !plan.note;
   $("gig-source").textContent = plan.source === "llm" ? "Claude" : "Local engine";
   $("gig-memo").hidden = false;
 }
 
-$("btn-gig").addEventListener("click", async () => {
-  const text = $("gig-text").value.trim(), err = $("gig-error"), btn = $("btn-gig");
+async function curate() {
+  const input = $("main-input").value.trim(), err = $("error"), btn = $("go"), status = $("agent-status");
   err.hidden = true;
-  if (text.length < 3) {
-    err.textContent = "Paste the event description, set time or poster text first.";
+  if (input.length < 3) {
+    err.textContent = "Describe your gig or paste playlist links first.";
     err.hidden = false;
     return;
   }
+  const { urls, brief, extra } = splitInput(input);
+  const steps = [];
   btn.disabled = true;
-  btn.textContent = "Analyzing...";
+  btn.textContent = "Curating...";
   try {
-    const pools = sources.slice(0, 30).map(x => ({ id: x.id, name: x.name, count: parseList(sourceText(x)).tracks.length }));
-    const res = await fetch("/api/analyze-gig", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, pools })
+    sources.length = 0; // every press plans a fresh set from what is in the box
+    if (extra) steps.push(`Only the first ${MAX_LINKS} links are used (${extra} ignored).`);
+
+    for (const url of urls) {
+      status.textContent = `Importing ${shortUrl(url)}...`;
+      try {
+        const data = await postJSON("/api/fetch-playlist", { url });
+        const text = (data.details || []).length ? trackLines(data.details).join("\n") : data.tracks.join("\n");
+        const name = data.name || "Imported list";
+        addSource({ id: "url:" + url, name, text, checked: true });
+        steps.push(`Imported "${name}": ${data.count} tracks.`);
+      } catch (e) {
+        if (e && e.name === "TypeError") throw e; // backend offline: stop here
+        steps.push(`Skipped ${shortUrl(url)}: ${e.message}`);
+      }
+    }
+
+    const hasLists = sources.length > 0;
+    if (!hasLists && brief.length < 3) throw new Error(steps.join(" ") || "Add a description or a playlist link.");
+    status.textContent = "Planning the set...";
+    const plan = await postJSON("/api/analyze-gig", {
+      text: brief || "DJ set from the provided playlists",
+      pools: sources.slice(0, 30).map(x => ({ id: x.id, name: x.name, count: parseList(x.text).tracks.length }))
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not analyze the brief.");
-    applyGigPlan(data);
-    toast("Plan applied. Adjust the pool or sliders if you like, then press Generate.");
+
+    if (!hasLists) { // no playlist to pick from: the agent curates tracks from the brief itself
+      status.textContent = "Curating tracks...";
+      const cur = await postJSON("/api/curate", { brief, duration_hours: clamp(Math.round(+plan.duration_hours) || 2, 1, 4) });
+      const label = `Curated: ${brief.slice(0, 30)}${brief.length > 30 ? "..." : ""}`;
+      addSource({ id: "curated", name: label, text: curatedLines(cur.tracks).join("\n"), checked: true });
+      plan.selected_pool_ids = ["curated"];
+      steps.push(`Curated ${cur.count} unique tracks (${cur.genres.join(", ")}, ${cur.bpm_range[0]}-${cur.bpm_range[1]} BPM) ` +
+        (cur.source === "llm" ? "from Claude's picks plus the built-in style pool." : "from the built-in style pool (example tracks, BPM/key estimated)."));
+      if (cur.note) steps.push(cur.note);
+      if (cur.shortfall) steps.push(`Matching tracks add up to ${fmtTime(cur.total_seconds)} of the ${fmtTime(cur.target_seconds)} slot; no track is repeated to fill it.`);
+    }
+
+    applyGigPlan(plan, steps);
+    status.textContent = "";
+    run(false, { name: brief ? `Set: ${brief.slice(0, 40)}` : "Playlist set" });
   } catch (e) {
+    status.textContent = "";
     err.textContent = e && e.name === "TypeError" ? "Backend offline. Start it with: python app.py" : e.message;
     err.hidden = false;
   } finally {
     btn.disabled = false;
-    btn.textContent = "Analyze Gig & Plan Set";
+    btn.textContent = "Curate & Plan Set";
   }
-});
+}
 
-$("form").addEventListener("submit", e => { e.preventDefault(); run(false); });
-$("preset").addEventListener("change", e => {
-  if (!e.target.value) return;
-  applyPreset(e.target.value);
-  run(false);
-});
+$("form").addEventListener("submit", e => { e.preventDefault(); curate(); });
+
+// Advanced overrides re-arrange the current pool without calling the agent again.
 for (const id of ["strictness", "tempo-flex", "peak-pos"]) {
   $(id).addEventListener("input", syncSliders);
   $(id).addEventListener("change", () => { syncSliders(); run(false); });
@@ -1162,7 +983,6 @@ $("arc").addEventListener("change", () => {
   syncSliders();
   run(false);
 });
-$("tracks").addEventListener("input", () => { $("preset").value = ""; sources[0].name = "Custom list"; updateCount(); renderPool(); });
 $("set-len").addEventListener("change", () => run(false));
 $("pool").addEventListener("change", e => {
   const src = sources.find(x => e.target && e.target.dataset && x.id === e.target.dataset.id);
@@ -1173,7 +993,7 @@ $("pool").addEventListener("change", e => {
 });
 $("pool").addEventListener("click", e => {
   const i = sources.findIndex(x => e.target && e.target.dataset && x.id === e.target.dataset.remove);
-  if (i < 1) return; // the custom list can only be unticked
+  if (i < 0) return;
   sources.splice(i, 1);
   renderPool();
   run(false);
@@ -1181,15 +1001,9 @@ $("pool").addEventListener("click", e => {
 
 $("dl-m3u").addEventListener("click", () => current && saveFile(`HarmonicFlow-${current.vibeId}.m3u`, buildM3U(current)));
 $("dl-xml").addEventListener("click", () => current && saveFile(`HarmonicFlow-${current.vibeId}.xml`, buildXML(current)));
-$("export-close").addEventListener("click", () => { $("export-view").hidden = true; });
-$("copy").addEventListener("click", () => {
-  if (!current) return;
-  navigator.clipboard.writeText(buildText(current)).then(() => toast("Tracklist copied to clipboard."));
-});
 
-$("preset").value = "tech";
-applyPreset("tech");
-run(true);
+syncSliders();
+renderPool();
 checkBackend();
 </script>
 </body>

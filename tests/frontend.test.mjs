@@ -1,6 +1,5 @@
-// Runs the real <script> from index.html in a stub DOM and checks
-// (1) the .loader is always hidden after a run, even when building the set fails,
-// (2) the Rekordbox XML export has 8 hot cues (A-H) per track with correct timestamps.
+// Runs the real <script> from index.html in a stub DOM: single-prompt agent flow, arrangement, arcs,
+// duration, pool, loader behaviour and the Rekordbox XML export.
 // Usage: node --test tests/
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +12,21 @@ const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 // elements that carry the `hidden` attribute in the real markup
 const HIDDEN_IDS = new Set([...html.matchAll(/<[^>]*id="([^"]+)"[^>]*\shidden[^>]*>/g)].map(m => m[1]));
 
-function makeEnv() {
+// Default fixture pool for the arrangement / export tests (12 tech house tracks with BPM, key, energy)
+const TECH = `Fisher - Losing It | 125 | 8A | E4
+Chris Lake - Turn Off The Lights | 126 | 9A | E4
+Dom Dolla - Rhyme Dust | 126 | 8A | E5
+Cloonee - Fine Night | 127 | 11A | E4
+John Summit - Where You Are | 126 | 10B | E5
+Michael Bibi - Got The Fire | 125 | 7A | E3
+Pawsa - Dog Tales | 128 | 9A | E4
+Mau P - Drugs From Amsterdam | 125 | 8A | E5
+Gorgon City - Voodoo | 125 | 9A | E4
+Vintage Culture - Fractions | 126 | 10A | E3
+Sidepiece - Together | 126 | 11B | E4
+Green Velvet - Bigger Than Prince | 124 | 8A | E3`;
+
+function makeEnv({ seed = true } = {}) {
   const els = new Map();
   const el = id => {
     if (!els.has(id)) {
@@ -39,7 +52,6 @@ function makeEnv() {
     BigInt, Math, Number, String, Array, Map, Set, JSON, Object, Error, encodeURIComponent,
     document: {
       getElementById: el,
-      querySelector: () => ({ value: "peak" }),
       querySelectorAll: () => [],
       createElement: () => ({ click() {}, remove() {} }),
       body: { appendChild() {} }
@@ -53,10 +65,14 @@ function makeEnv() {
   };
   vm.createContext(ctx);
   // Expose top-level const/function bindings for the tests.
-  vm.runInContext(script + "\n;globalThis.__hf = { run, buildXML, hotCues, arrange, parseList, keyPenalty, tempoPenalty, normOpts, applyPreset, mixTip, tipFor, aiTips, fmtTime, transition, ARCS, arcShape, splitPhases, readArc, arrangeForDuration, takeByDuration, sources, parsePool, addSource, renderPool, sumSeconds, trackSeconds, get current() { return current; }, PRESETS, VIBES };", ctx);
+  vm.runInContext(script + "\n;globalThis.__hf = { run, buildXML, hotCues, arrange, parseList, keyPenalty, tempoPenalty, normOpts, mixTip, fmtTime, transition, ARCS, arcShape, splitPhases, readArc, arrangeForDuration, sources, parsePool, addSource, renderPool, sumSeconds, trackSeconds, trackKey, splitInput, applyGigPlan, get current() { return current; } };", ctx);
+  if (seed) vm.runInContext(`addSource({ id: "manual", name: "Tech House Peak Hour", text: ${JSON.stringify(TECH)}, checked: true }); run(true);`, ctx);
   const flush = () => { while (timers.length) timers.shift()(); };
   return { ctx, el, flush, hf: ctx.__hf };
 }
+
+// Replaces the pool with a single list (the old tests typed this into the custom track list)
+const setList = (hf, text) => { hf.sources.splice(0, hf.sources.length); hf.addSource({ id: "manual", name: "Custom list", text, checked: true }); };
 
 test("loader is hidden after initial instant run", () => {
   const { el } = makeEnv();
@@ -136,43 +152,6 @@ test("Rekordbox XML escapes quotes, ampersands and angle brackets in track names
   assert.match(xml, /Artist="X &quot;Y&quot; &lt;Z&gt;"/);
 });
 
-// ---- Genre presets ---------------------------------------------------------
-
-const GENRES = { latin: [124, 128], dnb: [172, 176], rave: [138, 144] };
-
-for (const [id, [lo, hi]] of Object.entries(GENRES)) {
-  test(`preset ${id}: tracks sit in ${lo}-${hi} BPM with explicit key and energy`, () => {
-    const { hf } = makeEnv();
-    const p = hf.PRESETS[id];
-    assert.deepEqual(Array.from(p.bpm), [lo, hi]);
-    const { tracks } = hf.parseList(p.tracks);
-    assert.ok(tracks.length >= 10, "enough example tracks");
-    for (const t of tracks) {
-      assert.ok(!t.est.bpm && !t.est.key && !t.est.energy, `${t.title}: BPM/key/energy given explicitly`);
-      assert.ok(t.bpm >= lo && t.bpm <= hi, `${t.title} ${t.bpm} BPM outside ${lo}-${hi}`);
-      assert.ok(t.energy >= 1 && t.energy <= 5);
-    }
-  });
-
-  test(`selecting preset ${id} fills the track list, sliders and set`, () => {
-    const { el, hf, flush } = makeEnv();
-    el("preset").value = id; // a real <select> has the value set before "change" fires
-    el("preset").listeners.change({ target: { value: id } });
-    flush();
-    assert.equal(el("tracks").value, hf.PRESETS[id].tracks);
-    assert.equal(el("strictness").value, hf.PRESETS[id].strictness);
-    assert.equal(el("tempo-flex").value, hf.PRESETS[id].tempoFlex);
-    assert.match(el("strictness-val").textContent, /^\d \/ 3$/);
-    assert.equal(hf.current.name, hf.PRESETS[id].label);
-    assert.ok(hf.current.order.every(t => t.bpm >= lo && t.bpm <= hi));
-    assert.equal(el("loader").hidden, true);
-  });
-}
-
-test("preset menu lists the new genres", () => {
-  for (const id of ["latin", "dnb", "rave"]) assert.match(html, new RegExp(`<option value="${id}">`));
-});
-
 // ---- Harmonic Strictness / Tempo Flexibility -------------------------------
 
 const mk = (key, bpm) => ({ artist: "A", title: `${key}@${bpm}`, bpm, key: { n: parseInt(key), m: key.slice(-1) }, energy: 4, est: {} });
@@ -220,7 +199,7 @@ test("tempoPenalty grows steeply once the jump exceeds the flexibility", () => {
 test("arrange: strictness 1 chains only same/adjacent keys when possible", () => {
   const { hf } = makeEnv();
   const pool = ["10A", "8A", "12A", "9A", "11A"].map(k => mk(k, 126));
-  const order = hf.arrange(pool, hf.VIBES.peak, null, { strictness: 1, tempoFlex: 5 });
+  const order = hf.arrange(pool, hf.arcShape("banger"), null, { strictness: 1, tempoFlex: 5 });
   assert.equal(order.length, 5);
   for (let i = 1; i < order.length; i++) {
     assert.ok([0, 1, 11].includes(keyD(order[i - 1], order[i])), `${order[i - 1].title} -> ${order[i].title}`);
@@ -230,7 +209,7 @@ test("arrange: strictness 1 chains only same/adjacent keys when possible", () =>
 test("arrange: strictness 2 chains +2 boosts that strictness 1 forbids", () => {
   const { hf } = makeEnv();
   const pool = ["1A", "3A", "5A", "7A", "9A"].map(k => mk(k, 126));
-  const order = hf.arrange(pool, hf.VIBES.peak, null, { strictness: 2, tempoFlex: 5 });
+  const order = hf.arrange(pool, hf.arcShape("banger"), null, { strictness: 2, tempoFlex: 5 });
   const steps = order.slice(1).map((t, i) => keyD(order[i], t));
   assert.ok(steps.every(d => d === 2 || d === 10 || d === 7), "whole-step moves " + steps);
   const total = l => order.slice(1).reduce((s, t, i) => s + hf.keyPenalty(order[i].key, t.key, l), 0);
@@ -240,7 +219,7 @@ test("arrange: strictness 2 chains +2 boosts that strictness 1 forbids", () => {
 test("arrange: strictness 3 lets tempo decide over key clashes", () => {
   const { hf } = makeEnv();
   const pool = [[2, 130], [8, 126], [5, 128], [11, 124]].map(([n, b]) => mk(n + "A", b));
-  const order = hf.arrange(pool, hf.VIBES.peak, null, { strictness: 3, tempoFlex: 2 });
+  const order = hf.arrange(pool, hf.arcShape("banger"), null, { strictness: 3, tempoFlex: 2 });
   const bpms = order.map(t => t.bpm);
   assert.ok(bpms.every((b, i) => !i || Math.abs(b - bpms[i - 1]) <= 2), "bpm ladder " + bpms);
 });
@@ -249,7 +228,7 @@ test("arrange: tempo flexibility caps BPM jumps between consecutive tracks", () 
   const { hf } = makeEnv();
   const pool = [128, 120, 124, 122, 126].map(b => mk("8A", b));
   for (const flex of [2, 4]) {
-    const order = hf.arrange(pool, hf.VIBES.peak, null, { strictness: 2, tempoFlex: flex });
+    const order = hf.arrange(pool, hf.arcShape("banger"), null, { strictness: 2, tempoFlex: flex });
     assert.equal(order.length, 5);
     for (let i = 1; i < order.length; i++) {
       assert.ok(Math.abs(order[i].bpm - order[i - 1].bpm) <= flex, `flex ${flex}: ${order.map(t => t.bpm)}`);
@@ -261,7 +240,7 @@ test("arrange: the slider values change the resulting order", () => {
   const { hf } = makeEnv();
   // Harmonic pairs 8A+9A and 2A+3A are 10 BPM apart; across the pairs keys clash but tempo is close.
   const pool = [mk("8A", 120), mk("9A", 130), mk("2A", 121), mk("3A", 131)];
-  const run = o => hf.arrange(pool, hf.VIBES.peak, null, o).map(t => t.title);
+  const run = o => hf.arrange(pool, hf.arcShape("banger"), null, o).map(t => t.title);
   const strict = run({ strictness: 1, tempoFlex: 10 });
   const loose = run({ strictness: 3, tempoFlex: 1 });
   assert.notDeepEqual(strict, loose);
@@ -300,8 +279,6 @@ test("slider values reach arrange(): strict set is at least as harmonic as free 
 
 test("markup: Rekordbox palette, data-table columns, no rainbow chart / external fonts", () => {
   for (const c of ["#121212", "#1a1a1a", "#2d2d2d", "#00a8ff"]) assert.ok(html.includes(c), `palette ${c}`);
-  const heads = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1]);
-  assert.deepEqual(heads, ["#", "Key", "BPM", "Title", "Artist", "Transition", "AI Mix Hint"]);
   assert.match(html, /<tbody id="timeline">/);
   assert.match(html, /\.mono\s*\{[^}]*font-family:\s*var\(--font-mono\)/);
   for (const gone of ['id="plot"', 'id="wheel"', "renderFlow", "renderWheel", "fonts.googleapis.com", "linear-gradient"]) {
@@ -309,32 +286,28 @@ test("markup: Rekordbox palette, data-table columns, no rainbow chart / external
   }
 });
 
-test("table: one row per track with key badge, BPM, title, artist, transition and hint", () => {
+test("table: one row per track with key badge, BPM, title, artist and transition (6 columns)", () => {
   const { el, hf } = makeEnv();
   const rows = [...el("timeline").innerHTML.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(m => m[1]);
   assert.equal(rows.length, hf.current.order.length);
   rows.forEach((row, i) => {
     const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1]);
-    assert.equal(cells.length, 7, `row ${i + 1} has 7 cells`);
+    assert.equal(cells.length, 6, `row ${i + 1} has 6 cells`);
     const t = hf.current.order[i];
     assert.equal(cells[0], String(i + 1).padStart(2, "0"));
     assert.match(cells[1], new RegExp(`class="kbadge[^"]*"[^>]*>${t.key.n}${t.key.m}</span>`));
     assert.match(cells[2], new RegExp(`${Number.isInteger(t.bpm) ? t.bpm : t.bpm.toFixed(1)}$`));
     assert.ok(cells[3].includes(t.title.replace(/&/g, "&amp;")) && cells[4].includes(t.artist.replace(/&/g, "&amp;")));
-    if (i === 0) {
-      assert.match(cells[5], /Start/);
-      assert.equal(cells[6], "");
-    } else {
-      assert.match(cells[5], /class="tr (perfect|smooth|creative|clash)"/);
-      assert.ok(cells[6].replace(/<[^>]+>/g, "").length > 15, "mix hint present");
-    }
+    if (i === 0) assert.match(cells[5], /Start/);
+    else assert.match(cells[5], /class="tr (perfect|smooth|creative|clash)"[^>]*>[^<]+<\/span><span class="delta">[+-]?\d/);
   });
   assert.match(el("stats").innerHTML, /Runtime/);
+  assert.ok(!el("timeline").innerHTML.includes("hint-cell"));
 });
 
 test("table: track names are HTML-escaped", () => {
   const { el, hf, flush } = makeEnv();
-  el("tracks").value = `<img src=x onerror=alert(1)> - <script>alert(2)</script> | 126 | 8A | E3\nB & C - "Q" | 127 | 9A | E4`;
+  setList(hf, `<img src=x onerror=alert(1)> - <script>alert(2)</script> | 126 | 8A | E3\nB & C - "Q" | 127 | 9A | E4`);
   hf.run(true);
   const out = el("timeline").innerHTML;
   assert.ok(!/<img|<script/i.test(out));
@@ -423,88 +396,6 @@ test("mixTip: every key pair gets a short, sensible hint", () => {
   assert.match(hf.mixTip(t(8, "A"), t(8, "A")), /Perfect match/);
   assert.match(hf.mixTip(t(8, "A"), t(2, "B")), /Key clash/);
   assert.match(hf.mixTip(t(8, "A", 126), t(8, "A", 131)), /pitch up 5 BPM/i);
-});
-
-// ---- AI Vibe Prompt -------------------------------------------------------------
-
-const aiReply = (over = {}) => ({
-  ok: true,
-  json: async () => ({
-    source: "llm", note: null, count: 8,
-    tracks: Array.from({ length: 8 }, (_, i) => ({ artist: `Artist ${i}`, title: `Track <${i}>`, bpm: 130 + i, key: `${5 + (i % 3)}A`, energy: 3 + (i % 3), duration: 300 + i })),
-    tips: Array.from({ length: 7 }, (_, i) => `Hint ${i}: <b>cut</b> the lows`),
-    ...over
-  })
-});
-
-test("AI Curate: posts the prompt, adds an AI list to the pool, keeps its order and shows escaped hints", async () => {
-  const { ctx, el, hf, flush } = makeEnv();
-  const calls = [];
-  const before = el("tracks").value;
-  ctx.fetch = async (url, init) => { calls.push([url, JSON.parse(init.body)]); return aiReply(); };
-  el("ai-prompt").value = "Dark peak-time techno, 130 -> 140 BPM";
-  await el("btn-ai").listeners.click();
-  flush();
-  assert.deepEqual(calls, [["/api/ai-suggest", { prompt: "Dark peak-time techno, 130 -> 140 BPM" }]]);
-  assert.equal(el("tracks").value, before, "custom list is not overwritten");
-  const ai = hf.sources.find(x => x.id === "ai");
-  assert.match(ai.text.split("\n")[0], /^Artist 0 - Track <0> \| 130 \| 5A \| E3 \| 5:00$/);
-  assert.match(el("pool").innerHTML, /AI: Dark peak-time techno, 130 -\.\.\./);
-  assert.deepEqual(Array.from(hf.current.order, t => t.artist), Array.from({ length: 8 }, (_, i) => `Artist ${i}`), "AI order kept");
-  assert.equal(hf.current.name, "AI Curated Set");
-  const out = el("timeline").innerHTML;
-  assert.match(out, /<span class="ai">AI<\/span>Hint 0: &lt;b&gt;cut&lt;\/b&gt; the lows/);
-  assert.ok(!out.includes("<b>cut</b>"));
-  assert.match(el("ai-status").textContent, /Curated by Claude/);
-  assert.equal(el("btn-ai").disabled, false);
-  assert.equal(el("loader").hidden, true);
-});
-
-test("AI Curate: local fallback result works without tips and says so", async () => {
-  const { ctx, el, hf, flush } = makeEnv();
-  ctx.fetch = async () => aiReply({ source: "local", tips: [] });
-  el("ai-prompt").value = "anything";
-  await el("btn-ai").listeners.click();
-  flush();
-  assert.match(el("ai-status").textContent, /Local heuristic generator/);
-  assert.ok(!el("timeline").innerHTML.includes('class="ai"'));
-  assert.ok(el("timeline").innerHTML.includes("hint-cell"));
-  assert.equal(hf.current.order.length, 8);
-});
-
-test("AI Curate: empty prompt, server error and offline backend are reported, never crash", async () => {
-  const { ctx, el } = makeEnv();
-  let called = 0;
-  ctx.fetch = async () => { called++; return aiReply(); };
-  el("ai-prompt").value = "  ";
-  await el("btn-ai").listeners.click();
-  assert.equal(called, 0);
-  assert.equal(el("ai-error").hidden, false);
-
-  ctx.fetch = async () => ({ ok: false, json: async () => ({ detail: "Kirjoita AI Vibe Prompt" }) });
-  el("ai-prompt").value = "ab c";
-  await el("btn-ai").listeners.click();
-  assert.equal(el("ai-error").textContent, "Kirjoita AI Vibe Prompt");
-
-  ctx.fetch = async () => { throw new TypeError("Failed to fetch"); };
-  await el("btn-ai").listeners.click();
-  assert.match(el("ai-error").textContent, /Backend offline/);
-  assert.equal(el("btn-ai").disabled, false);
-  assert.equal(el("btn-ai").textContent, "AI Curate Set");
-});
-
-test("playlist fetch keeps real track lengths in the new pool list", async () => {
-  const env = makeEnv();
-  env.ctx.fetch = async () => ({ ok: true, json: async () => ({
-    name: "Bar", tracks: ["Franky Rizardo - Shinjuku"], count: 2,
-    details: [{ artist: "Franky Rizardo", title: "Shinjuku", duration_ms: 167905 }, { artist: "Gaskin", title: "No Limits", duration_ms: null }]
-  }) });
-  env.el("playlist-url").value = "https://open.spotify.com/playlist/2Mg5wgO65IZ0aOdh2hlg8S";
-  await env.el("btn-fetch").listeners.click();
-  const src = env.hf.sources[1];
-  assert.equal(src.name, "Bar");
-  assert.equal(src.text, "Franky Rizardo - Shinjuku | 2:48\nGaskin - No Limits");
-  assert.deepEqual(Array.from(env.hf.parseList(src.text).tracks, t => t.duration), [168, 360]);
 });
 
 // ---- Drama arcs ------------------------------------------------------------------
@@ -628,7 +519,7 @@ const lines = (n, prefix = "L", base = 0) => Array.from({ length: n }, (_, i) =>
 
 test("duration choices 1-4 h limit the number of tracks to the target time", () => {
   const { el, hf, flush } = makeEnv();
-  el("tracks").value = lines(80);
+  setList(hf, lines(80));
   const counts = [];
   for (const sec of [3600, 7200, 10800, 14400]) {
     el("set-len").value = String(sec);
@@ -646,18 +537,18 @@ test("duration choices 1-4 h limit the number of tracks to the target time", () 
 
 test("duration: a short pool uses everything and says so; the loader stays hidden", () => {
   const { el, hf, flush } = makeEnv();
-  el("tracks").value = lines(10);
+  setList(hf, lines(10));
   el("set-len").value = "14400";
   el("set-len").listeners.change();
   flush();
   assert.equal(hf.current.order.length, 10);
-  assert.match(el("notice").textContent, /only add up to .* of the 4:00:00 target/);
+  assert.match(el("notice").textContent, /Only 10 unique tracks are available .* of the 4:00:00 target/);
   assert.equal(el("loader").hidden, true);
 });
 
 test("duration: 4 h from a 120-track pool arranges in reasonable time", () => {
   const { el, hf } = makeEnv();
-  el("tracks").value = lines(120);
+  setList(hf, lines(120));
   el("set-len").value = "14400";
   const t0 = Date.now();
   hf.run(true);
@@ -665,100 +556,6 @@ test("duration: 4 h from a 120-track pool arranges in reasonable time", () => {
   assert.ok(Math.abs(hf.sumSeconds(hf.current.order) - 14400) <= 420, "runtime " + hf.sumSeconds(hf.current.order));
   assert.ok(ms < 15000, `took ${ms} ms`);
   console.log(`# 4h arrange of ${hf.current.order.length}/120 tracks: ${ms} ms`);
-});
-
-test("takeByDuration keeps the AI order and trims to the target", () => {
-  const { hf } = makeEnv();
-  const tr = Array.from({ length: 30 }, (_, i) => ({ title: "t" + i, duration: 300 }));
-  const out = Array.from(hf.takeByDuration(tr, 3600), t => t.title);
-  assert.equal(out.length, 12);
-  assert.deepEqual(out, tr.slice(0, 12).map(t => t.title));
-});
-
-// ---- Track pool ---------------------------------------------------------------------------
-
-const playlistReply = (name, n, prefix) => ({
-  ok: true,
-  json: async () => ({
-    name, count: n, tracks: [],
-    details: Array.from({ length: n }, (_, i) => ({ artist: `${prefix}Artist${i}`, title: `${prefix}Title${i}`, duration_ms: (180 + i * 7) * 1000 }))
-  })
-});
-
-async function fetchList(env, url, reply) {
-  env.ctx.fetch = async () => reply;
-  env.el("playlist-url").value = url;
-  await env.el("btn-fetch").listeners.click();
-  env.flush();
-}
-
-test("pool: several lists can be fetched in a row without overwriting raw data", async () => {
-  const env = makeEnv();
-  const { el, hf } = env;
-  const before = el("tracks").value;
-  await fetchList(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", playlistReply("Bar", 7, "B"));
-  await fetchList(env, "https://soundcloud.com/x/sets/latin", playlistReply("Latin Tech", 24, "L"));
-  assert.equal(el("tracks").value, before, "custom list untouched");
-  assert.equal(hf.sources.length, 3);
-  const pool = el("pool").innerHTML;
-  assert.match(pool, /data-id="url:https:\/\/open\.spotify\.com\/playlist\/A+" checked><span class="pool-name">Bar<\/span><span class="mono">\(7\)<\/span>/);
-  assert.match(pool, /<span class="pool-name">Latin Tech<\/span><span class="mono">\(24\)<\/span>/);
-  assert.match(pool, /<span class="pool-name">Tech House Peak Hour<\/span><span class="mono">\(12\)<\/span>/);
-  assert.equal(el("pool-total").textContent, "43 tracks selected");
-  const titles = new Set(Array.from(hf.current.order, t => t.title));
-  assert.ok([...titles].some(t => t.startsWith("BTitle")) && [...titles].some(t => t.startsWith("LTitle")), "union of ticked lists");
-  assert.equal(el("playlist-url").value, "", "input cleared for the next link");
-});
-
-test("pool: arrange only uses ticked lists", async () => {
-  const env = makeEnv();
-  const { el, hf } = env;
-  await fetchList(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", playlistReply("Bar", 7, "B"));
-  await fetchList(env, "https://soundcloud.com/x/sets/latin", playlistReply("Latin Tech", 24, "L"));
-  const tick = (id, checked) => { el("pool").listeners.change({ target: { dataset: { id }, checked } }); env.flush(); };
-
-  tick("manual", false);
-  tick("url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", false);
-  assert.equal(hf.current.order.length, 24);
-  assert.ok(hf.current.order.every(t => t.title.startsWith("LTitle")), "only Latin Tech");
-  assert.equal(el("pool-total").textContent, "24 tracks selected");
-
-  tick("url:https://soundcloud.com/x/sets/latin", false);
-  assert.equal(el("error").hidden, false, "nothing ticked -> clear message");
-  assert.match(el("error").textContent, /Select at least two tracks/);
-  assert.equal(el("loader").hidden, true);
-
-  tick("url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", true);
-  assert.equal(el("error").hidden, true);
-  assert.ok(hf.current.order.every(t => t.title.startsWith("BTitle")));
-  assert.equal(hf.current.order.length, 7);
-});
-
-test("pool: re-fetching the same URL replaces the entry, x removes it, names are escaped", async () => {
-  const env = makeEnv();
-  const { el, hf } = env;
-  const url = "https://www.youtube.com/playlist?list=PL1";
-  await fetchList(env, url, playlistReply("<img onerror=1>", 5, "Y"));
-  await fetchList(env, url, playlistReply("<img onerror=1>", 9, "Y"));
-  assert.equal(hf.sources.length, 2);
-  assert.ok(!/<img/.test(el("pool").innerHTML));
-  assert.match(el("pool").innerHTML, /&lt;img onerror=1&gt;<\/span><span class="mono">\(9\)/);
-  el("pool").listeners.click({ target: { dataset: { remove: "manual" } } });
-  assert.equal(hf.sources.length, 2, "custom list cannot be removed");
-  el("pool").listeners.click({ target: { dataset: { remove: "url:" + url } } });
-  env.flush();
-  assert.equal(hf.sources.length, 1);
-  assert.equal(hf.current.order.length, 12);
-});
-
-test("pool: fetch errors are shown and never add a list", async () => {
-  const env = makeEnv();
-  env.ctx.fetch = async () => ({ ok: false, json: async () => ({ detail: "Paikalliset ja yksityiset osoitteet on estetty." }) });
-  env.el("playlist-url").value = "http://127.0.0.1/";
-  await env.el("btn-fetch").listeners.click();
-  assert.equal(env.el("fetch-error").textContent, "Paikalliset ja yksityiset osoitteet on estetty.");
-  assert.equal(env.hf.sources.length, 1);
-  assert.equal(env.el("btn-fetch").disabled, false);
 });
 
 // ---- Arc controls wiring ----------------------------------------------------------------------
@@ -785,7 +582,7 @@ test("arc menu: picking an arc sets its natural peak position, redraws the curve
 
 test("generated set is ordered by the chosen arc (energy of the opener < peak)", () => {
   const { el, hf, flush } = makeEnv();
-  el("tracks").value = lines(40);
+  setList(hf, lines(40));
   for (const arc of ["classic", "slow", "coaster"]) {
     el("arc").value = arc;
     el("arc").listeners.change();
@@ -812,7 +609,7 @@ const phaseNames = { classic: ["1. Warm-up", "2. Build-up", "3. Peak Hour", "4. 
 for (const arc of Object.keys(phaseNames)) {
   test(`Rekordbox XML (${arc}): Full Set plus one playlist per phase, in order, nothing lost`, () => {
     const { el, hf, flush } = makeEnv();
-    el("tracks").value = lines(20);
+    setList(hf, lines(20));
     el("set-len").value = "14400";
     el("arc").value = arc;
     el("arc").listeners.change();
@@ -838,7 +635,7 @@ for (const arc of Object.keys(phaseNames)) {
 
 test("Rekordbox XML: classic phase sizes follow the 20/40/30/10 split", () => {
   const { el, hf, flush } = makeEnv();
-  el("tracks").value = lines(20);
+  setList(hf, lines(20));
   el("set-len").value = "14400";
   hf.run(true);
   const { lists } = playlistsOf(hf.buildXML(hf.current));
@@ -858,193 +655,388 @@ test("Rekordbox XML: empty phases are dropped and numbering stays contiguous", (
   assert.equal(none.rootCount, 1);
 });
 
-// ---- Gig Brief / Event Analyzer agent --------------------------------------------------------
+// =============================================================================================
+// Agent-first single-prompt UX
+// =============================================================================================
 
-const BAR_ID = "url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA";
-const LATIN_ID = "url:https://soundcloud.com/x/sets/latin";
+const unique = list => new Set(Array.from(list, t => hfTrackKey(t))).size === list.length;
+let hfTrackKey = null; // set per env below (trackKey lives in the page script)
 
-const gigPlan = (over = {}) => ({
-  source: "llm", note: null,
-  rationale: "Opening slot (22:00-00:00, 2 h): a slow burn. Strict keys; using 'Latin Tech'.",
-  duration_hours: 3, curve: "coaster", peak_position: 80, strictness: 1, tempo_flex: 3, selected_pool_ids: [LATIN_ID],
+const PLAN = (over = {}) => ({
+  source: "llm", note: null, rationale: "Warehouse opening slot: slow climb with tight key matching.",
+  duration_hours: 2, curve: "slow", peak_position: 90, strictness: 1, tempo_flex: 3, selected_pool_ids: [], ...over
+});
+
+const curatedReply = (n, over = {}) => ({
+  source: "local", note: null, count: n, genres: ["techno"], bpm_range: [130, 140], total_seconds: n * 330, target_seconds: 7200, shortfall: false,
+  tracks: Array.from({ length: n }, (_, i) => ({ artist: `CArtist${i}`, title: `CTitle${i}`, bpm: 130 + (i % 11), key: `${6 + (i % 3)}A`, energy: (i % 5) + 1, duration: 300 + i })),
   ...over
 });
 
-async function gigEnv() {
-  const env = makeEnv();
-  await fetchList(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", playlistReply("Bar", 7, "B"));
-  await fetchList(env, "https://soundcloud.com/x/sets/latin", playlistReply("Latin Tech", 24, "L"));
-  return env;
-}
+const playlistData = (name, n, prefix, over = {}) => ({
+  name, count: n, tracks: [],
+  details: Array.from({ length: n }, (_, i) => ({ artist: `${prefix}Artist${i}`, title: `${prefix}Title${i}`, duration_ms: (200 + i * 9) * 1000 })),
+  ...over
+});
 
-async function analyze(env, text, reply) {
+const fail = detail => ({ __fail: detail });
+
+// Routes the page's fetch() calls: path -> data | fail(detail) | Error | (body) => any
+function api(env, routes) {
   const calls = [];
-  env.ctx.fetch = async (url, init) => { calls.push([url, JSON.parse(init.body)]); return reply; };
-  env.el("gig-text").value = text;
-  await env.el("btn-gig").listeners.click();
+  env.ctx.fetch = async (url, init) => {
+    const body = init && init.body ? JSON.parse(init.body) : null;
+    calls.push([url, body]);
+    let r = routes[url];
+    if (typeof r === "function") r = r(body);
+    if (r && r.name === "TypeError" && r.message !== undefined) throw r;
+    if (r === undefined) return { ok: false, json: async () => ({ detail: `no route ${url}` }) };
+    if (r && r.__fail) return { ok: false, json: async () => ({ detail: r.__fail }) };
+    return { ok: true, json: async () => r };
+  };
   return calls;
 }
-const planReply = plan => ({ ok: true, json: async () => plan });
+
+// Types into the single input and presses "Curate & Plan Set"; resolves when the whole pipeline has finished.
+async function curate(env, text) {
+  env.el("main-input").value = text;
+  env.el("form").listeners.submit({ preventDefault() {} });
+  for (let i = 0; i < 500 && env.el("go").disabled; i++) await new Promise(r => setImmediate(r));
+  env.flush();
+}
+
+const emptyEnv = () => {
+  const env = makeEnv({ seed: false });
+  hfTrackKey = t => env.hf.trackKey(t.artist, t.title);
+  return env;
+};
+const titles = env => Array.from(env.hf.current.order, t => t.title);
+const rows = env => (env.el("timeline").innerHTML.match(/<tr>/g) || []).length;
 const checkedIds = hf => Array.from(hf.sources.filter(x => x.checked), x => x.id);
 
-test("markup: the Event & Gig Brief panel sits at the top of the page", () => {
-  assert.match(html, /<b>Event &amp; Gig Brief \(AI Decision Engine\)<\/b>/);
-  assert.ok(html.indexOf('id="brief"') > 0 && html.indexOf('id="brief"') < html.indexOf('<main class="layout">'), "above the controls");
-  assert.match(html, /<textarea id="gig-text"[^>]*placeholder="Opening slot at warehouse party 22-00, dark hypnotic vibes"/);
-  assert.match(html, /<button class="btn primary" id="btn-gig" type="button">Analyze Gig &amp; Plan Set<\/button>/);
-  assert.match(html, /<h2>Gig Strategy Memo<\/h2>/);
+test("markup: one input, one button, memo, table, exports - and nothing of the old manual UI", () => {
+  assert.equal((html.match(/<textarea/g) || []).length, 1, "a single textarea");
+  assert.match(html, /<textarea id="main-input"[^>]*placeholder="Describe your gig, vibe, venue, or paste Spotify\/SoundCloud\/YouTube links\.\.\."/);
+  assert.match(html, /<button class="go" id="go" type="submit">Curate &amp; Plan Set<\/button>/);
+  for (const gone of ['id="tracks"', 'id="preset"', "ai-prompt", "btn-ai", "btn-fetch", "btn-gig", "playlist-url", "AI Mix Hint", "AI Vibe Prompt",
+    "Custom Track List", "Custom track list", 'id="copy"', "export-view", "gig-text", "PRESETS", "VIBES", "aiTips"]) {
+    assert.ok(!html.includes(gone), `${gone} must be gone`);
+  }
+  const heads = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1]);
+  assert.deepEqual(heads, ["#", "Key", "BPM", "Title", "Artist", "Transition"]);
+  assert.match(html, /id="dl-xml"[^>]*>Rekordbox XML/);
+  assert.match(html, /id="dl-m3u"[^>]*>M3U Playlist/);
 });
 
-test("Analyze Gig posts the brief together with the current Track Pool lists", async () => {
-  const env = await gigEnv();
-  const calls = await analyze(env, "  Opening slot at warehouse party 22-00, dark hypnotic vibes ", planReply(gigPlan()));
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], "/api/analyze-gig");
-  assert.deepEqual(calls[0][1], {
-    text: "Opening slot at warehouse party 22-00, dark hypnotic vibes",
-    pools: [{ id: "manual", name: "Tech House Peak Hour", count: 12 }, { id: BAR_ID, name: "Bar", count: 7 }, { id: LATIN_ID, name: "Latin Tech", count: 24 }]
-  });
+test("markup: visible flow is input -> reasoning memo -> table -> export buttons", () => {
+  const at = s => { const i = html.indexOf(s); assert.ok(i > 0, s); return i; };
+  assert.ok(at('id="main-input"') < at('id="gig-memo"') && at('id="gig-memo"') < at("<table") && at("<table") < at('id="dl-xml"'));
+  assert.match(html, /<h2>Agent Reasoning Memo/);
+  assert.match(html, /<section class="panel memo" id="gig-memo"[^>]*hidden>/);
 });
 
-test("the agent's decisions are set in duration, arc, sliders, peak position and pool ticks", async () => {
-  const env = await gigEnv();
+test("markup: all manual controls live inside a closed <details> 'Advanced Overrides (Auto-managed by AI)'", () => {
+  const m = html.match(/<details class="advanced" id="advanced"([^>]*)>([\s\S]*?)<\/details>/);
+  assert.ok(m, "details element");
+  assert.ok(!/\bopen\b/.test(m[1]), "closed by default");
+  assert.match(m[2], /<summary>Advanced Overrides \(Auto-managed by AI\)<\/summary>/);
+  for (const id of ["arc", "peak-pos", "strictness", "tempo-flex", "set-len", "pool"]) assert.ok(m[2].includes(`id="${id}"`), `${id} is inside the details`);
+  const outside = html.slice(0, html.indexOf("<details")) + html.slice(html.indexOf("</details>"));
+  for (const id of ["arc", "peak-pos", "strictness", "tempo-flex", "set-len"]) assert.ok(!outside.includes(`id="${id}"`), `${id} only in the details`);
+});
+
+test("start state: empty table hint, memo hidden, export buttons disabled", () => {
+  const env = emptyEnv();
+  assert.equal(env.el("gig-memo").hidden, true);
+  assert.match(html, /<button class="btn primary" id="dl-xml" type="button" disabled>/);
+  assert.match(html, /<button class="btn" id="dl-m3u" type="button" disabled>/);
+  assert.match(html, /<tr class="empty"><td colspan="6">Describe your gig above/);
+  assert.equal(env.hf.sources.length, 0);
+});
+
+test("splitInput separates playlist links from the brief", () => {
+  const { hf } = emptyEnv();
+  const r = hf.splitInput("Dark techno 130-140 BPM, see https://open.spotify.com/playlist/AAA, and (https://soundcloud.com/x/sets/y). https://open.spotify.com/playlist/AAA");
+  assert.deepEqual(Array.from(r.urls), ["https://open.spotify.com/playlist/AAA", "https://soundcloud.com/x/sets/y"]);
+  assert.equal(r.brief, "Dark techno 130-140 BPM, see and");
+  assert.equal(r.extra, 0);
+  const none = hf.splitInput("  Opening slot   22-00  ");
+  assert.deepEqual([Array.from(none.urls), none.brief], [[], "Opening slot 22-00"]);
+  const many = hf.splitInput(Array.from({ length: 11 }, (_, i) => `https://youtu.be/v${i}`).join(" "));
+  assert.equal(many.urls.length, 8);
+  assert.equal(many.extra, 3);
+  assert.equal(hf.splitInput("only spotify.com text, no scheme").urls.length, 0);
+});
+
+test("duplicates: the same song (case, 'Radio Edit', punctuation) is only ever taken once, remixes stay separate", () => {
+  const { hf } = emptyEnv();
+  const { tracks, dupes } = hf.parseList([
+    "Kolter - Trapped | 138 | 5A | E4", "KOLTER - Trapped - Radio-Edit | 138 | 5A | E4", "kolter - trapped (radio edit) | 138 | 5A | E4",
+    "ARTBAT - Return to Oz | 124 | 4A | E3", "ARTBAT - Return to Oz (Monolink Remix) | 124 | 4A | E3", "Mau P - Drugs From Amsterdam | 125 | 8A | E5"].join("\n"));
+  assert.equal(tracks.length, 4);
+  assert.equal(dupes, 2);
+  assert.deepEqual(Array.from(tracks, t => t.title), ["Trapped", "Return to Oz", "Return to Oz (Monolink Remix)", "Drugs From Amsterdam"]);
+});
+
+test("brief only (no link): the agent plans, curates unique tracks itself and generates the set", async () => {
+  const env = emptyEnv();
   const { el, hf } = env;
-  const before = hf.current;
-  await analyze(env, "Opening slot, hypnotic", planReply(gigPlan()));
+  const calls = api(env, { "/api/analyze-gig": PLAN(), "/api/curate": curatedReply(30) });
+  await curate(env, "  Dark hypnotic techno 130-140 BPM  ");
 
-  assert.equal(el("set-len").value, "10800");
-  assert.equal(el("arc").value, "coaster");
-  assert.equal(el("peak-pos").value, "80");
-  assert.equal(el("peak-pos-val").textContent, "80%");
-  assert.equal(el("strictness").value, "1");
-  assert.equal(el("strictness-val").textContent, "1 / 3");
-  assert.equal(el("tempo-flex").value, "3");
-  assert.equal(el("tempo-flex-val").textContent, "±3 BPM");
-  assert.match(el("arc-hint").textContent, /breather/);
-  assert.deepEqual(checkedIds(hf), [LATIN_ID], "only the agent's list is ticked");
-  assert.match(el("pool").innerHTML, /data-id="url:https:\/\/soundcloud\.com\/x\/sets\/latin" checked>/);
-  assert.ok(!/data-id="manual" checked/.test(el("pool").innerHTML) && !/data-id="url:https:\/\/open\.spotify[^"]*" checked/.test(el("pool").innerHTML));
-  assert.equal(el("pool-total").textContent, "24 tracks selected");
-
+  assert.deepEqual(calls.map(c => c[0]), ["/api/analyze-gig", "/api/curate"], "no playlist fetch without links");
+  assert.deepEqual(calls[0][1], { text: "Dark hypnotic techno 130-140 BPM", pools: [] });
+  assert.deepEqual(calls[1][1], { brief: "Dark hypnotic techno 130-140 BPM", duration_hours: 2 });
+  assert.deepEqual(Array.from(hf.sources, x => x.id), ["curated"]);
+  assert.deepEqual(checkedIds(hf), ["curated"]);
+  assert.equal(el("error").hidden, true);
   assert.equal(el("gig-memo").hidden, false);
-  assert.equal(el("gig-rationale").textContent, gigPlan().rationale);
-  const chips = el("gig-chips").innerHTML;
-  for (const part of ["3 h", "Rollercoaster / Two Peaks", "80%", "1 / 3", "±3 BPM", "Latin Tech"]) assert.ok(chips.includes(part), `chip ${part}`);
+  assert.match(el("gig-steps").innerHTML, /Curated 30 unique tracks \(techno, 130-140 BPM\) from the built-in style pool/);
+  assert.equal(el("gig-rationale").textContent, PLAN().rationale);
   assert.equal(el("gig-source").textContent, "Claude");
-  assert.equal(hf.current, before, "nothing is generated until the DJ presses Generate");
+  assert.equal(el("arc").value, "slow");
+  assert.equal(el("peak-pos").value, "90");
+  assert.equal(el("strictness").value, "1");
+  assert.equal(el("tempo-flex").value, "3");
+
+  assert.ok(hf.current, "set generated by the single button");
+  assert.equal(hf.current.name, "Set: Dark hypnotic techno 130-140 BPM");
+  assert.equal(hf.current.arc, "slow");
+  assert.equal(hf.current.targetSec, 7200);
+  assert.ok(Math.abs(hf.sumSeconds(hf.current.order) - 7200) <= 420);
+  assert.equal(rows(env), hf.current.order.length);
+  assert.ok(hf.current.order.every(t => t.title.startsWith("CTitle")));
+  assert.ok(unique(hf.current.order));
+  assert.equal(el("dl-xml").disabled, false);
+  assert.equal(el("dl-m3u").disabled, false);
+  assert.equal(el("go").disabled, false);
+  assert.equal(el("go").textContent, "Curate & Plan Set");
   assert.equal(el("loader").hidden, true);
-  assert.equal(el("btn-gig").disabled, false);
-  assert.equal(el("btn-gig").textContent, "Analyze Gig & Plan Set");
+  assert.equal(el("agent-status").textContent, "");
 });
 
-test("after the plan the DJ can still tick lists by hand, then Generate uses the planned settings", async () => {
-  const env = await gigEnv();
-  const { el, hf, flush } = env;
-  await analyze(env, "Opening slot", planReply(gigPlan()));
-  const generate = () => { el("form").listeners.submit({ preventDefault() {} }); flush(); };
+test("links only: the agent imports them, decides the parameters and picks from them without curating", async () => {
+  const env = emptyEnv();
+  const { el, hf } = env;
+  const A = "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", B = "https://soundcloud.com/x/sets/latin";
+  const calls = api(env, {
+    "/api/fetch-playlist": b => b.url === A ? playlistData("Bar", 7, "B") : playlistData("Latin Tech", 24, "L"),
+    "/api/analyze-gig": body => PLAN({ source: "local", selected_pool_ids: body.pools.map(p => p.id), curve: "classic", peak_position: 75, strictness: 2, tempo_flex: 5, duration_hours: 3 })
+  });
+  await curate(env, `${A}\n${B}`);
 
-  generate();
+  assert.deepEqual(calls.map(c => c[0]), ["/api/fetch-playlist", "/api/fetch-playlist", "/api/analyze-gig"], "no curation when links were given");
+  assert.equal(calls[2][1].text, "DJ set from the provided playlists");
+  assert.deepEqual(calls[2][1].pools, [{ id: "url:" + A, name: "Bar", count: 7 }, { id: "url:" + B, name: "Latin Tech", count: 24 }]);
+  assert.deepEqual(checkedIds(hf), ["url:" + A, "url:" + B]);
+  assert.match(el("gig-steps").innerHTML, /Imported &quot;Bar&quot;: 7 tracks\./);
+  assert.match(el("gig-steps").innerHTML, /Imported &quot;Latin Tech&quot;: 24 tracks\./);
+  assert.equal(hf.current.name, "Playlist set");
   assert.equal(hf.current.targetSec, 10800);
-  assert.equal(hf.current.arc, "coaster");
-  assert.equal(hf.current.peakPos, .8);
-  assert.deepEqual({ ...hf.current.opts }, { strictness: 1, tempoFlex: 3 });
-  assert.equal(hf.current.order.length, 24);
-  assert.ok(hf.current.order.every(t => t.title.startsWith("LTitle")), "only the Latin list");
-
-  el("pool").listeners.change({ target: { dataset: { id: BAR_ID }, checked: true } });
-  flush();
-  assert.deepEqual(checkedIds(hf), [BAR_ID, LATIN_ID], "manual tick is respected");
-  assert.equal(hf.current.order.length, 31);
-  assert.ok(hf.current.order.some(t => t.title.startsWith("BTitle")) && hf.current.order.some(t => t.title.startsWith("LTitle")));
-  assert.equal(hf.current.arc, "coaster");
+  assert.equal(hf.current.order.length, 31, "both lists together are shorter than 3 h: every unique track once");
+  assert.ok(unique(hf.current.order));
+  assert.equal(el("gig-source").textContent, "Local engine");
+  assert.match(el("pool").innerHTML, /<span class="pool-name">Bar<\/span><span class="mono">\(7\)<\/span>/);
 });
 
-test("a plan can be re-applied: ticks of the previous plan are cleared", async () => {
-  const env = await gigEnv();
-  await analyze(env, "first", planReply(gigPlan({ selected_pool_ids: [LATIN_ID, "manual"] })));
-  assert.deepEqual(checkedIds(env.hf), ["manual", LATIN_ID]);
-  await analyze(env, "second", planReply(gigPlan({ selected_pool_ids: [BAR_ID], source: "local", note: "Local fallback used.", curve: "slow", duration_hours: 1, peak_position: 90 })));
-  assert.deepEqual(checkedIds(env.hf), [BAR_ID]);
-  assert.equal(env.el("arc").value, "slow");
-  assert.equal(env.el("set-len").value, "3600");
-  assert.equal(env.el("gig-source").textContent, "Local engine");
-  assert.equal(env.el("gig-note").textContent, "Local fallback used.");
-  assert.equal(env.el("gig-note").hidden, false);
+test("links + brief: the plan picks the fitting list and only that one feeds the set", async () => {
+  const env = emptyEnv();
+  const A = "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA", B = "https://soundcloud.com/x/sets/latin";
+  const calls = api(env, {
+    "/api/fetch-playlist": b => b.url === A ? playlistData("Bar", 7, "B") : playlistData("Latin Tech", 24, "L"),
+    "/api/analyze-gig": PLAN({ selected_pool_ids: ["url:" + B] })
+  });
+  await curate(env, `Latin warm-up for a rooftop bar ${A} ${B}`);
+  assert.equal(calls[2][1].text, "Latin warm-up for a rooftop bar");
+  assert.ok(!calls.some(c => c[0] === "/api/curate"));
+  assert.deepEqual(checkedIds(env.hf), ["url:" + B]);
+  assert.equal(env.hf.current.order.length, 24);
+  assert.ok(env.hf.current.order.every(t => t.title.startsWith("LTitle")));
+  assert.match(env.el("pool-total").textContent, /^24 tracks selected$/);
 });
 
-test("plan values are clamped / snapped and bad ones are ignored instead of breaking the UI", async () => {
-  const env = await gigEnv();
+test("overlapping playlists never put the same song in twice", async () => {
+  const env = emptyEnv();
+  const A = "https://youtu.be/AAA", B = "https://youtu.be/BBB";
+  api(env, {
+    "/api/fetch-playlist": b => b.url === A ? playlistData("One", 8, "S") : playlistData("Two", 8, "S", {
+      details: playlistData("Two", 8, "S").details.map((d, i) => i < 5 ? { ...d, title: d.title + (i % 2 ? " (Radio Edit)" : "").toUpperCase() } : { ...d, title: "Own" + i })
+    }),
+    "/api/analyze-gig": b => PLAN({ selected_pool_ids: b.pools.map(p => p.id), duration_hours: 4 })
+  });
+  await curate(env, `${A} ${B}`);
+  const order = env.hf.current.order;
+  assert.ok(unique(order));
+  assert.equal(order.length, 11, "8 + 8 minus 5 repeats");
+  assert.match(env.el("notice").textContent, /Removed 5 duplicate tracks\./);
+});
+
+test("a pool that is shorter than the slot gives a shorter set instead of repeats", async () => {
+  const env = emptyEnv();
+  api(env, { "/api/analyze-gig": PLAN({ duration_hours: 4 }), "/api/curate": curatedReply(10, { shortfall: true, total_seconds: 3300, target_seconds: 14400 }) });
+  await curate(env, "drum and bass 174");
+  const { hf, el } = env;
+  assert.equal(hf.current.order.length, 10);
+  assert.ok(unique(hf.current.order));
+  assert.match(el("notice").textContent, /Only 10 unique tracks are available \(.* of the 4:00:00 target\), so the set ends there instead of repeating songs\./);
+  assert.match(el("gig-steps").innerHTML, /no track is repeated to fill it/);
+});
+
+test("for any slot length the set is unique and as long as the unique tracks allow", async () => {
+  const env = emptyEnv();
+  for (const hours of [1, 2, 3, 4]) for (const n of [6, 25, 80]) {
+    api(env, { "/api/analyze-gig": PLAN({ duration_hours: hours }), "/api/curate": curatedReply(n) });
+    await curate(env, "techno set");
+    const order = env.hf.current.order, total = env.hf.sumSeconds(order), all = env.hf.sumSeconds(env.hf.parsePool().tracks);
+    assert.ok(unique(order), `${hours} h / ${n} tracks`);
+    assert.ok(order.length <= n);
+    if (all <= hours * 3600) assert.equal(order.length, n, "everything used when the pool is too short");
+    else assert.ok(Math.abs(total - hours * 3600) <= 420, `${hours} h / ${n}: ${total}s`);
+  }
+});
+
+test("a failing link falls back to curation from the brief; the failure is reported in the memo", async () => {
+  const env = emptyEnv();
+  const calls = api(env, {
+    "/api/fetch-playlist": fail("Paikalliset ja yksityiset osoitteet on estetty."),
+    "/api/analyze-gig": PLAN(), "/api/curate": curatedReply(20)
+  });
+  await curate(env, "Peak time techno https://open.spotify.com/playlist/BROKEN");
+  assert.deepEqual(calls.map(c => c[0]), ["/api/fetch-playlist", "/api/analyze-gig", "/api/curate"]);
+  assert.match(env.el("gig-steps").innerHTML, /Skipped open\.spotify\.com\/playlist\/BROKEN: Paikalliset ja yksityiset osoitteet on estetty\./);
+  assert.match(env.el("gig-steps").innerHTML, /Curated 20 unique tracks/);
+  assert.ok(env.hf.current.order.length >= 2);
+});
+
+test("only failing links and no brief: clear error, nothing generated, button usable again", async () => {
+  const env = emptyEnv();
+  const calls = api(env, { "/api/fetch-playlist": fail("Virhe Spotifyn haussa: HTTP 404") });
+  await curate(env, "https://open.spotify.com/playlist/NOPE");
+  assert.deepEqual(calls.map(c => c[0]), ["/api/fetch-playlist"]);
+  assert.match(env.el("error").textContent, /Skipped open\.spotify\.com\/playlist\/NOPE: Virhe Spotifyn haussa: HTTP 404/);
+  assert.equal(env.el("error").hidden, false);
+  assert.equal(env.hf.current, null);
+  assert.equal(env.el("go").disabled, false);
+  assert.equal(env.el("gig-memo").hidden, true);
+});
+
+test("short input, offline backend and server errors are reported without breaking the page", async () => {
+  const env = emptyEnv();
+  let n = 0;
+  env.ctx.fetch = async () => { n++; throw new TypeError("Failed to fetch"); };
+  await curate(env, "  ");
+  assert.equal(n, 0);
+  assert.match(env.el("error").textContent, /Describe your gig or paste playlist links first/);
+
+  await curate(env, "Opening set 22-00");
+  assert.equal(env.el("error").textContent, "Backend offline. Start it with: python app.py");
+  await curate(env, "https://youtu.be/abc");
+  assert.equal(env.el("error").textContent, "Backend offline. Start it with: python app.py");
+
+  api(env, { "/api/analyze-gig": fail("Liitä tapahtumakuvaus tai soittoaika ensin.") });
+  await curate(env, "ab ?");
+  assert.equal(env.el("error").textContent, "Liitä tapahtumakuvaus tai soittoaika ensin.");
+  assert.equal(env.el("go").disabled, false);
+  assert.equal(env.el("go").textContent, "Curate & Plan Set");
+  assert.equal(env.hf.current, null);
+});
+
+test("every press plans from scratch: earlier lists are replaced, a re-run keeps the loader hidden", async () => {
+  const env = emptyEnv();
+  api(env, { "/api/analyze-gig": PLAN(), "/api/curate": curatedReply(12), "/api/fetch-playlist": playlistData("Bar", 9, "B") });
+  await curate(env, "techno");
+  assert.deepEqual(Array.from(env.hf.sources, x => x.id), ["curated"]);
+  await curate(env, "https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA");
+  assert.deepEqual(Array.from(env.hf.sources, x => x.id), ["url:https://open.spotify.com/playlist/AAAAAAAAAAAAAAAAAAAAAA"]);
+  assert.ok(env.hf.current.order.every(t => t.title.startsWith("BTitle")));
+  assert.equal(env.el("loader").hidden, true);
+});
+
+test("advanced overrides re-arrange the current pool without asking the agent again", async () => {
+  const env = emptyEnv();
   const { el, hf } = env;
-  await analyze(env, "x brief", planReply(gigPlan({ duration_hours: 9, peak_position: 62, strictness: 0, tempo_flex: 99, curve: "slow" })));
-  assert.deepEqual([el("set-len").value, el("peak-pos").value, el("strictness").value, el("tempo-flex").value, el("arc").value], ["14400", "60", "1", "10", "slow"]);
-  await analyze(env, "x brief", planReply(gigPlan({ duration_hours: 2, peak_position: 200, strictness: 7, tempo_flex: 0 })));
-  assert.deepEqual([el("peak-pos").value, el("strictness").value, el("tempo-flex").value], ["90", "3", "1"]);
+  const calls = api(env, { "/api/analyze-gig": PLAN(), "/api/curate": curatedReply(40) });
+  await curate(env, "techno 130-140");
+  const before = calls.length, order0 = titles(env).join();
 
-  // garbage: unknown curve, non-numbers, unknown pool ids -> previous values / ticks stay
-  const keep = [el("set-len").value, el("arc").value, el("strictness").value, el("tempo-flex").value];
-  const ticks = checkedIds(hf);
-  await analyze(env, "x brief", planReply({ rationale: 42, duration_hours: "banana", curve: "nope", strictness: null, tempo_flex: "", selected_pool_ids: ["ghost", 5, null] }));
-  assert.deepEqual([el("set-len").value, el("arc").value, el("strictness").value, el("tempo-flex").value], keep);
-  assert.deepEqual(checkedIds(hf), ticks, "unknown pool ids change nothing");
-  assert.equal(el("btn-gig").disabled, false);
-  assert.equal(el("gig-error").hidden, true);
+  el("arc").value = "banger";
+  el("arc").listeners.change();
+  env.flush();
+  assert.equal(el("peak-pos").value, 60);
+  assert.equal(hf.current.arc, "banger");
+  assert.ok(hf.current.order.every(t => t.energy >= 3), "festival arc re-ordered the same pool");
+
+  el("set-len").value = "3600";
+  el("set-len").listeners.change();
+  env.flush();
+  assert.equal(hf.current.targetSec, 3600);
+  assert.ok(Math.abs(hf.sumSeconds(hf.current.order) - 3600) <= 420);
+
+  el("strictness").value = "3"; el("strictness").listeners.change(); env.flush();
+  el("tempo-flex").value = "9"; el("tempo-flex").listeners.change(); env.flush();
+  assert.deepEqual({ ...hf.current.opts }, { strictness: 3, tempoFlex: 9 });
+
+  el("pool").listeners.change({ target: { dataset: { id: "curated" }, checked: false } });
+  env.flush();
+  assert.match(el("error").textContent, /Select at least two tracks/);
+  el("pool").listeners.change({ target: { dataset: { id: "curated" }, checked: true } });
+  env.flush();
+  assert.equal(el("error").hidden, true);
+  assert.equal(calls.length, before, "no new API calls: overrides are local");
+  assert.notEqual(titles(env).join(), order0);
+  assert.equal(el("loader").hidden, true);
 });
 
-test("memo shows model text as plain text only", async () => {
-  const env = await gigEnv();
-  env.hf.sources[2].name = "<b>x</b> & <img src=1 onerror=alert(1)>";
-  env.hf.renderPool();
-  await analyze(env, "x brief", planReply(gigPlan({ rationale: "<img src=x onerror=alert(1)> <script>1</script>" })));
-  assert.equal(env.el("gig-rationale").textContent, "<img src=x onerror=alert(1)> <script>1</script>", "textContent, never innerHTML");
-  const chips = env.el("gig-chips").innerHTML;
-  assert.ok(!/<img|<script/i.test(chips));
-  assert.match(chips, /&lt;b&gt;x&lt;\/b&gt; &amp; &lt;img src=1 onerror=alert\(1\)&gt;/);
-  assert.ok(!/<img|<script/i.test(env.el("pool").innerHTML));
+test("overrides before anything was planned just say what to do", () => {
+  const env = emptyEnv();
+  env.el("arc").value = "slow";
+  env.el("arc").listeners.change();
+  assert.match(env.el("error").textContent, /Describe your gig above and press Curate & Plan Set/);
+  assert.equal(env.hf.current, null);
 });
 
-test("Analyze Gig: empty brief, server error and offline backend are reported without side effects", async () => {
-  const env = makeEnv();
+test("model-supplied text (rationale, list names, steps) is never interpreted as HTML", async () => {
+  const env = emptyEnv();
+  api(env, {
+    "/api/fetch-playlist": playlistData("<img src=x onerror=alert(1)>", 6, "X"),
+    "/api/analyze-gig": b => PLAN({ rationale: "<script>alert(1)</script> plan", selected_pool_ids: b.pools.map(p => p.id) })
+  });
+  await curate(env, "https://youtu.be/xyz");
+  assert.equal(env.el("gig-rationale").textContent, "<script>alert(1)</script> plan");
+  for (const id of ["gig-chips", "gig-steps", "pool"]) assert.ok(!/<img|<script/i.test(env.el(id).innerHTML), id);
+  assert.match(env.el("pool").innerHTML, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test("exports are enabled after a run and download M3U / XML for the planned set", async () => {
+  const env = emptyEnv();
+  api(env, { "/api/analyze-gig": PLAN({ curve: "classic", peak_position: 75 }), "/api/curate": curatedReply(24) });
+  await curate(env, "techno");
+  env.el("dl-xml").listeners.click();
+  assert.equal(env.el("toast").textContent, "Downloaded HarmonicFlow-classic.xml");
+  env.el("dl-m3u").listeners.click();
+  assert.equal(env.el("toast").textContent, "Downloaded HarmonicFlow-classic.m3u");
+  const xml = env.hf.buildXML(env.hf.current);
+  assert.match(xml, /<NODE Name="HarmonicFlow - Full Set" Type="1"/);
+  assert.match(xml, /<NODE Type="0" Name="HarmonicFlow - Phases"/);
+  assert.equal((xml.match(/<POSITION_MARK /g) || []).length, env.hf.current.order.length * 8);
+});
+
+// Contract test: pytest feeds the real backend's plan and curated pool for a brief through the real page code.
+test("backend plan and curated pool land in the UI and produce a unique set", { skip: !process.env.HF_GIG_PLAN }, async () => {
+  const { text, plan, curated } = JSON.parse(readFileSync(process.env.HF_GIG_PLAN, "utf8"));
+  const env = emptyEnv();
+  const calls = api(env, { "/api/analyze-gig": plan, "/api/curate": curated });
+  await curate(env, text);
   const { el, hf } = env;
-  let calls = 0;
-  env.ctx.fetch = async () => { calls++; return planReply(gigPlan()); };
-  el("gig-text").value = "  ";
-  await el("btn-gig").listeners.click();
-  assert.equal(calls, 0);
-  assert.equal(el("gig-error").hidden, false);
-
-  const ticks = checkedIds(hf), len = el("set-len").value;
-  env.ctx.fetch = async () => ({ ok: false, json: async () => ({ detail: "Liitä tapahtumakuvaus tai soittoaika ensin." }) });
-  el("gig-text").value = "party ???";
-  await el("btn-gig").listeners.click();
-  assert.equal(el("gig-error").textContent, "Liitä tapahtumakuvaus tai soittoaika ensin.");
-
-  env.ctx.fetch = async () => { throw new TypeError("Failed to fetch"); };
-  await el("btn-gig").listeners.click();
-  assert.match(el("gig-error").textContent, /Backend offline/);
-  assert.equal(el("btn-gig").disabled, false);
-  assert.equal(el("gig-memo").hidden, true);
-  assert.deepEqual(checkedIds(hf), ticks);
-  assert.equal(el("set-len").value, len);
-});
-
-// Contract test: pytest feeds the real backend engine's answer for a brief into the real page code.
-test("a plan from the real backend engine lands in the UI", { skip: !process.env.HF_GIG_PLAN }, async () => {
-  const { text, pools, plan } = JSON.parse(readFileSync(process.env.HF_GIG_PLAN, "utf8"));
-  const env = makeEnv();
-  for (const p of pools) if (p.id !== "manual") env.hf.addSource({ id: p.id, name: p.name, text: lines(p.count, p.id.slice(-3)), checked: true });
-  const calls = await analyze(env, text, planReply(plan));
-  assert.deepEqual(calls[0][1].pools.map(p => p.id), pools.map(p => p.id));
-  const { el, hf } = env;
+  assert.deepEqual(calls[1][1], { brief: text, duration_hours: plan.duration_hours });
   assert.equal(el("set-len").value, String(plan.duration_hours * 3600));
   assert.equal(el("arc").value, plan.curve);
   assert.equal(+el("peak-pos").value, plan.peak_position);
   assert.equal(el("strictness").value, String(plan.strictness));
   assert.equal(el("tempo-flex").value, String(plan.tempo_flex));
-  assert.deepEqual(checkedIds(hf).sort(), [...plan.selected_pool_ids].sort());
-  assert.equal(el("gig-rationale").textContent, plan.rationale);
-  assert.equal(el("gig-memo").hidden, false);
-  el("form").listeners.submit({ preventDefault() {} });
-  env.flush();
   assert.equal(hf.current.arc, plan.curve);
-  assert.equal(hf.current.targetSec, plan.duration_hours * 3600);
+  const order = hf.current.order, [lo, hi] = curated.bpm_range;
+  assert.ok(order.length >= 8 && unique(order));
+  assert.ok(order.every(t => t.bpm >= lo - 6 && t.bpm <= hi + 6), "tracks fit the requested tempo window");
+  assert.ok(hf.sumSeconds(order) <= plan.duration_hours * 3600 + 420);
 });

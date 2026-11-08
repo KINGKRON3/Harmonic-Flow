@@ -652,15 +652,128 @@ def test_gig_llm_outage_never_breaks_the_demo(failure, monkeypatch):
     assert status == 200 and plan["source"] == "local" and "paikallista päätösmoottoria" in plan["note"]
     assert_valid_plan(plan)
 
+# ---------------------------------------------------------------------------
+# Autonomous curation (/api/curate) and the built-in style pool
+# ---------------------------------------------------------------------------
+
+CURATE_BRIEF = "Dark hypnotic techno 130-140 BPM"
+KNOWN_TAGS = {"techno", "rave", "tech", "melodic", "dnb", "latin", "house"}
+
+
+def curate_call(brief, hours=2):
+    try:
+        return 200, app_module.curate(app_module.CurateRequest(brief=brief, duration_hours=hours))
+    except HTTPException as e:
+        return e.status_code, {"detail": e.detail}
+
+
+def keys_of(tracks):
+    return [app_module.track_key(t["artist"], t["title"]) for t in tracks]
+
+
+def test_style_pool_is_rich_unique_and_well_formed():
+    pool = app_module.CATALOG
+    assert len(pool) >= 80
+    assert len(set(keys_of(pool))) == len(pool), "no track twice in the pool"
+    for t in pool:
+        assert app_module.CAMELOT_RE.match(t["key"]) and 60 <= t["bpm"] <= 220 and 1 <= t["energy"] <= 5
+        assert 90 <= t["duration"] <= 1200
+        assert t["tags"] and t["tags"] <= KNOWN_TAGS
+        assert "|" not in t["artist"] + t["title"]
+    for tag in KNOWN_TAGS:
+        assert sum(tag in t["tags"] for t in pool) >= 7, f"enough {tag} tracks"
+
+
+def test_track_key_ignores_case_punctuation_and_edit_suffixes_but_not_remixes():
+    k = app_module.track_key
+    assert k("Kolter", "Trapped") == k("KOLTER", "Trapped - Radio-Edit") == k("kolter", "trapped (radio edit)") == k("Kolter", "Trapped (Extended Mix)")
+    assert k("ARTBAT", "Return to Oz") != k("ARTBAT", "Return to Oz (Monolink Remix)")
+    assert k("Dom Dolla", "Rhyme Dust") == k("Dom  Dolla", "Rhyme-Dust")
+
+
+def test_curate_from_a_brief_alone_gives_unique_fitting_tracks():
+    status, r = curate_call(CURATE_BRIEF)
+    assert status == 200 and r["source"] == "local" and r["note"] is None
+    tracks = r["tracks"]
+    assert r["count"] == len(tracks) and 8 <= len(tracks) <= app_module.MAX_CANDIDATES
+    assert len(set(keys_of(tracks))) == len(tracks), "unique tracks only"
+    assert r["genres"] == ["techno"] and r["bpm_range"] == [130, 140]
+    assert all(125 <= t["bpm"] <= 145 for t in tracks)
+    assert all(app_module.CAMELOT_RE.match(t["key"]) and 1 <= t["energy"] <= 5 and t["duration"] for t in tracks)
+    assert r["total_seconds"] == sum(t["duration"] for t in tracks) >= r["target_seconds"] == 7200
+    assert r["shortfall"] is False
+    centre = [abs(t["bpm"] - 135) for t in tracks]
+    assert centre[:5] == sorted(centre[:5]) and min(centre) <= 1, "closest to the requested tempo first"
+
+
+@pytest.mark.parametrize("brief,hours", [
+    (CURATE_BRIEF, 1), (CURATE_BRIEF, 4), ("drum and bass 174", 1), ("drum and bass 174", 4), ("Latin tech house party", 3),
+    ("melodic techno journey", 2), ("warm deep house sunset", 4), ("something completely different", 2), ("hard rave 150 bpm", 1),
+    ("tehdään synkkä techno-setti", 2),
+])
+def test_curated_pool_never_repeats_a_track_to_fill_the_time(brief, hours):
+    status, r = curate_call(brief, hours)
+    assert status == 200
+    assert len(set(keys_of(r["tracks"]))) == r["count"] >= 8
+    assert r["total_seconds"] == sum(t["duration"] for t in r["tracks"])
+    assert r["target_seconds"] == hours * 3600
+    assert r["shortfall"] == (r["total_seconds"] < hours * 3600)
+
+
+def test_curate_reports_a_shortfall_instead_of_padding():
+    status, r = curate_call("drum and bass 174", 4)
+    assert r["shortfall"] is True and r["total_seconds"] < 4 * 3600
+    assert all(170 <= t["bpm"] <= 178 for t in r["tracks"][:10]), "the genre first, neighbours only after it"
+
+
+def test_curate_input_validation():
+    status, body = curate_call("  ?  ")
+    assert status == 400 and "Kuvaile" in body["detail"]
+    with pytest.raises(ValidationError):
+        app_module.CurateRequest(brief="x" * 1001)
+    for hours in (0, 5):
+        with pytest.raises(ValidationError):
+            app_module.CurateRequest(brief="techno", duration_hours=hours)
+
+
+def test_curate_puts_claudes_picks_first_and_tops_up_from_the_pool_without_duplicates(monkeypatch):
+    own = [{"artist": f"Claude Artist {i}", "title": f"Own Pick {i}", "bpm": 132 + i, "key": f"{5 + i % 3}A", "energy": 4, "duration": 330}
+           for i in range(9)]
+    own.append({"artist": "Charlotte de Witte", "title": "Doppler", "bpm": 140, "key": "5A", "energy": 4, "duration": 372})
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setattr(app_module.requests, "post",
+                        lambda *a, **k: FakeResponse(payload=llm_payload(tracks=own, tips=["t"] * 9)))
+    status, r = curate_call(CURATE_BRIEF)
+    assert status == 200 and r["source"] == "llm" and r["note"] is None
+    assert [t["title"] for t in r["tracks"][:9]] == [f"Own Pick {i}" for i in range(9)]
+    keys = keys_of(r["tracks"])
+    assert len(set(keys)) == len(keys), "Claude's Doppler and the pool's Doppler are one track"
+    assert keys.count(app_module.track_key("Charlotte de Witte", "Doppler")) == 1
+    assert r["count"] > 10, "topped up from the style pool"
+
+
+@pytest.mark.parametrize("failure", [
+    _raise(app_module.requests.ConnectionError("offline")), lambda *a, **k: FakeResponse(status=529),
+    lambda *a, **k: FakeResponse(payload={"content": [{"type": "text", "text": "nonsense"}]}),
+])
+def test_curate_survives_ai_outages_with_the_style_pool(failure, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setattr(app_module.requests, "post", failure)
+    status, r = curate_call(CURATE_BRIEF)
+    assert status == 200 and r["source"] == "local" and "tyylipoolia" in r["note"]
+    assert len(set(keys_of(r["tracks"]))) == r["count"] >= 8
+
 
 @needs_node
-def test_real_gig_plan_lands_in_the_ui(tmp_path):
-    """The plan produced by the backend engine is fed through the real page code (clicking the button)."""
-    status, plan = gig(OPENING_BRIEF)
+def test_real_plan_and_curated_pool_land_in_the_ui(tmp_path):
+    """The backend's gig plan and curated pool for a brief-only input are fed through the real page code."""
+    status, plan = gig(CURATE_BRIEF, [])
     assert status == 200
-    f = tmp_path / "gig.json"
-    f.write_text(json.dumps({"text": OPENING_BRIEF, "pools": GIG_POOLS, "plan": plan}), encoding="utf-8")
-    res = subprocess.run(["node", "--test", "--test-name-pattern=real backend engine", "tests/frontend.test.mjs"],
+    status, curated = curate_call(CURATE_BRIEF, plan["duration_hours"])
+    assert status == 200
+    f = tmp_path / "agent.json"
+    f.write_text(json.dumps({"text": CURATE_BRIEF, "plan": plan, "curated": curated}), encoding="utf-8")
+    res = subprocess.run(["node", "--test", "--test-name-pattern=backend plan and curated pool", "tests/frontend.test.mjs"],
                          cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
                          env={**os.environ, "HF_GIG_PLAN": str(f)})
     out = res.stdout + res.stderr

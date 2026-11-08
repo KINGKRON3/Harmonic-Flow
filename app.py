@@ -43,6 +43,14 @@ def clean_track_name(raw_title):
     return title.strip()
 
 
+def track_key(artist, title):
+    """Identity of a track for de-duplication: case, punctuation and 'Radio Edit' style suffixes are ignored."""
+    text = f"{artist} {title}".lower()
+    text = re.sub(r"\b(?:radio|extended|original|club|album)[\s-]*(?:edit|mix|version)\b", " ", text)
+    text = re.sub(r"\bremaster(?:ed)?(?:\s*\d{4})?\b", " ", text)
+    return re.sub(r"[^a-z0-9äöå]+", "", text)
+
+
 def clean_text(value, limit=80):
     """Single-line, control-character-free text that is safe in the `a | b | c` track-list format."""
     value = re.sub(r'[\x00-\x1f\x7f ]+', ' ', str(value or ''))
@@ -292,13 +300,50 @@ Jamie Jones | Sunset Sketch | 120 | 10A | 3 | 358 | house
 Folamour | Ya Ya | 121 | 7B | 3 | 300 | house
 Lane 8 | Brightest Lights | 118 | 4A | 2 | 372 | house
 Nora En Pure | Come With Me | 120 | 12A | 2 | 336 | house
+Pawsa | Dog Tales | 128 | 9A | 4 | 246 | tech
+Gorgon City | Voodoo | 125 | 9A | 4 | 230 | tech
+Vintage Culture | Fractions | 126 | 10A | 3 | 251 | tech
+Sidepiece | Together | 126 | 11B | 4 | 232 | tech
+Mind Against | Walking Away | 124 | 7A | 4 | 391 | melodic
+Maceo Plex | Insomnia | 125 | 8A | 5 | 384 | melodic
+Kevin de Vries | Dance With Me | 126 | 8A | 5 | 335 | melodic
+Colyn | Oxygen Levels Low | 123 | 3A | 3 | 376 | melodic
+Monolink | Return to Oz (Artbat Remix) | 125 | 4A | 5 | 376 | melodic
+Bou | Closer | 174 | 12B | 4 | 211 | dnb
+Kanine | Get Down | 175 | 2A | 5 | 221 | dnb
+Luude | Down Under | 174 | 1B | 4 | 200 | dnb
+Serum | Lumberjack | 174 | 10A | 4 | 205 | dnb
+Hugel | Bella Ciao | 125 | 8A | 4 | 238 | latin
+Cloonee | Latin Lover | 127 | 9A | 5 | 230 | latin
+Mochakk | Tambor | 126 | 8B | 4 | 241 | latin
+Santi D'Orazio | Mambo | 127 | 10A | 5 | 249 | latin
+Hot Since 82 | Havana Nights | 125 | 7A | 3 | 245 | latin
+Eli Brown | Caliente | 128 | 9A | 5 | 227 | latin
+KI/KI | Night Drive | 140 | 6A | 3 | 350 | techno rave
+Pegassi | Brutal Mind | 143 | 8A | 5 | 359 | techno rave
+Dax J | Pulse Engine | 144 | 6A | 5 | 320 | techno rave
+Maya Jane Coles | Little By Little | 121 | 8A | 3 | 318 | house
+Dennis Ferrer | Hey Hey | 124 | 7A | 3 | 296 | house
+Purple Disco Machine | Hypnotized | 118 | 9A | 3 | 214 | house
+Duke Dumont | Ocean Drive | 120 | 11A | 3 | 236 | house
+Gorgon City | Ready For Your Love | 122 | 4A | 3 | 232 | house
+Patrick Topping | Forget | 124 | 6A | 3 | 274 | house
+Camelphat | Cola | 122 | 6A | 3 | 244 | house
+Marsh | Lost In Time | 119 | 5B | 2 | 352 | house
+Yotto | Hyperfall | 118 | 3A | 2 | 366 | house
+Rufus Du Sol | Innerbloom | 122 | 7A | 2 | 342 | house
+Four Tet | Baby | 116 | 9B | 2 | 258 | house
+Bonobo | Kerala | 112 | 10A | 2 | 270 | house
 """.strip()
 
 
 def _load_catalog():
-    out = []
+    out, seen = [], set()
     for line in CATALOG_TEXT.splitlines():
         artist, title, bpm, key, energy, dur, tags = [p.strip() for p in line.split("|")]
+        if track_key(artist, title) in seen:
+            continue  # the pool never contains the same track twice
+        seen.add(track_key(artist, title))
         out.append({"artist": artist, "title": title, "bpm": float(bpm), "key": key,
                     "energy": int(energy), "duration": int(dur), "tags": set(tags.split())})
     return out
@@ -366,7 +411,8 @@ def parse_vibe_prompt(prompt):
         e0, e1 = 4.0, 5.0
     else:
         e0, e1 = 3.0, 5.0
-    return {"tags": tags, "start": start, "end": end, "count": count, "e0": e0, "e1": e1}
+    return {"tags": tags, "start": start, "end": end, "count": count, "e0": e0, "e1": e1,
+            "explicit": bool(nums), "genres": primary or ["techno"]}
 
 
 def local_suggest(prompt):
@@ -423,7 +469,7 @@ def sanitize_ai_result(raw):
             raise ValueError("bad bpm")
         if isinstance(energy, bool) or not isinstance(energy, (int, float)):
             raise ValueError("bad energy")
-        ident = (artist.lower(), title.lower())
+        ident = track_key(artist, title)
         if ident in seen:
             continue
         seen.add(ident)
@@ -464,6 +510,71 @@ def llm_suggest(prompt):
     if start < 0 or end < start:
         raise ValueError("no JSON in reply")
     return sanitize_ai_result(json.loads(text[start:end + 1]))
+
+
+MAX_CANDIDATES = 60
+
+
+class CurateRequest(BaseModel):
+    brief: str = Field(max_length=1000)
+    duration_hours: int = Field(default=2, ge=1, le=4)
+
+
+def curate_pool(brief, hours, core=()):
+    """Collects unique candidate tracks for a brief: Claude's picks first (if any), then the style pool.
+
+    The frontend arranges the best-fitting subset for the chosen duration. A track is never repeated
+    to fill time: when the matching tracks are too short for the slot, `shortfall` is reported.
+    """
+    spec = parse_vibe_prompt(brief)
+    lo, hi = sorted((spec["start"], spec["end"]))
+    if spec["explicit"]:
+        w_lo, w_hi = lo - 5, hi + 5
+    else:
+        w_lo = min(GENRE_BPM[g][0] for g in spec["genres"]) - 4
+        w_hi = max(GENRE_BPM[g][1] for g in spec["genres"]) + 4
+    center = (lo + hi) / 2
+    target = hours * 3600
+
+    seen, picked = set(), []
+
+    def add(t):
+        k = track_key(t["artist"], t["title"])
+        if k not in seen:
+            seen.add(k)
+            picked.append(t)
+
+    for t in core:
+        add(t)
+    matching = [t for t in CATALOG if t["tags"] & spec["tags"] and (not spec["explicit"] or w_lo <= t["bpm"] <= w_hi)]
+    if len(matching) < 8:  # the named BPM window is too narrow for the genre: keep the genre
+        matching = [t for t in CATALOG if t["tags"] & spec["tags"]]
+    by_fit = lambda t: (abs(t["bpm"] - center), t["artist"], t["title"])
+    for t in sorted(matching, key=by_fit):
+        add(t)
+    if sum(t.get("duration") or 360 for t in picked) < target:  # neighbouring styles at a similar tempo
+        for t in sorted((t for t in CATALOG if w_lo <= t["bpm"] <= w_hi), key=by_fit):
+            add(t)
+    picked = picked[:MAX_CANDIDATES]
+    total = sum(t.get("duration") or 360 for t in picked)
+    tracks = [{k: t.get(k) for k in ("artist", "title", "bpm", "key", "energy", "duration")} for t in picked]
+    return {"tracks": tracks, "count": len(tracks), "total_seconds": total, "target_seconds": target,
+            "shortfall": total < target, "genres": spec["genres"], "bpm_range": [round(lo), round(hi)] if spec["explicit"] else [round(w_lo + 4), round(w_hi - 4)]}
+
+
+@app.post("/api/curate")
+def curate(req: CurateRequest):
+    brief = re.sub(r"\s+", " ", req.brief).strip()
+    if len(brief) < 3:
+        raise HTTPException(status_code=400, detail="Kuvaile keikka tai tunnelma ensin.")
+    note, core = None, []
+    try:
+        result = llm_suggest(brief)
+        core = result[0] if result else []
+    except Exception as e:  # network, quota, bad JSON ... the style pool alone is enough
+        note = f"AI-palvelu ei vastannut ({type(e).__name__}), käytettiin tyylipoolia."
+    out = curate_pool(brief, req.duration_hours, core)
+    return {"source": "llm" if core else "local", "note": note, **out}
 
 
 @app.post("/api/ai-suggest")
@@ -612,7 +723,7 @@ def local_gig_plan(text, pools):
     chosen = matched or [p.id for p in pools]
     names = [p.name for p in pools if p.id in chosen]
     if not pools:
-        pool_phrase = "no lists to choose from yet"
+        pool_phrase = "no playlists were given, so tracks are curated from the brief"
     elif matched:
         pool_phrase = "using " + ", ".join(f"'{n}'" for n in names[:3]) + (" and more" if len(names) > 3 else "")
     else:
